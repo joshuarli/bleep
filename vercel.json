@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "npm run build:vercel-assets",
+  "outputDirectory": "dist/vercel",
+  "regions": ["sfo1"],
+  "fluid": true,
+  "rewrites": [{ "source": "/probe", "destination": "/api/probe" }]
+}

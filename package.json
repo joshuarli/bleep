@@ -1,0 +1,26 @@
+{
+  "name": "blip-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "stamp": "node scripts/stamp.ts",
+    "check": "npm run stamp && tsc --noEmit",
+    "test": "npm run stamp && node --test \"test/**/*.test.ts\"",
+    "smoke:workerd": "npm run stamp && node scripts/smoke-workerd.ts",
+    "build:cloudflare": "npm run stamp && cf build",
+    "build:vercel-assets": "npm run stamp && vite build --config vite.vercel.config.ts",
+    "accept:foundation": "npm run check && npm test && npm run build:vercel-assets && npm run build:cloudflare && cf deploy --dry-run && npm run smoke:workerd"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-rc.4",
+    "@types/node": "24.19.2",
+    "cf": "1.0.0-rc.2",
+    "typescript": "7.0.2",
+    "vite": "8.3.8"
+  }
+}
