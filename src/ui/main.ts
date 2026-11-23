@@ -19,6 +19,7 @@ import {
 import { buildReport, type Report } from "../measure/report.ts";
 import { buildControls, element } from "./controls.ts";
 import { drawGraph, pauseBands, PROVIDER_STYLE, TIME_SCALES, type DrawStats, type TimeScale } from "./graph.ts";
+import { buildExportPanel } from "./export.ts";
 import { buildMarkerPanel } from "./markers.ts";
 import { activeMs, latestResponseMeta, renderSummary } from "./summary.ts";
 
@@ -171,7 +172,34 @@ function markersChanged(): void {
   lastSummaryAt = Number.NEGATIVE_INFINITY;
 }
 
-app.append(controlsRoot, figure, markerSection, summarySection, endpointList);
+const exportSection = element("section", { className: "panel", ariaLabel: "Export" });
+buildExportPanel(exportSection, () => {
+  const nowAt = performance.now();
+  refreshSummary(nowAt);
+  const retention = session.retention();
+  return {
+    app: { name: "blip-monitor", version: APP_VERSION, frontendRevision: BUILD_REVISION, buildTarget: BUILD_TARGET, uiOrigin: location.origin },
+    exportedAtWallMs: Date.now(),
+    timeOriginWallMs: performance.timeOrigin,
+    endpoints: ENDPOINTS,
+    retention: {
+      records: retention.size,
+      discarded: retention.discarded,
+      earlierSamplesLost: retention.discarded > 0,
+      fromAt: retention.fromAt,
+      toAt: retention.toAt,
+      eventsDiscarded: session.events.discarded,
+    },
+    runs: session.runs,
+    records: session.records.toArray(),
+    events: session.events.toArray(),
+    markers,
+    experiment,
+    displayed: displayedReport,
+  };
+});
+
+app.append(controlsRoot, figure, markerSection, summarySection, exportSection, endpointList);
 
 const longTaskObserver =
   typeof PerformanceObserver !== "undefined" && PerformanceObserver.supportedEntryTypes?.includes("longtask")

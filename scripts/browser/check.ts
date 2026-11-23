@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { build } from "vite";
 import { ENDPOINTS_BY_TARGET } from "../../src/config/endpoints.ts";
 import { PROVIDERS, type Provider } from "../../src/config/targets.ts";
 import { PROBE_REQUEST } from "../../src/measure/probe-client.ts";
+import { parseExportJson } from "../../src/export/document.ts";
 import type { Report } from "../../src/measure/report.ts";
 import type { ProbeResult } from "../../src/measure/types.ts";
 import { FixtureOrigin, SIMULATED_LOCATION, type Fault } from "../../test/fixtures/fixture-origin.ts";
@@ -47,7 +48,10 @@ async function withStack(name: string, scenario: Scenario): Promise<void> {
     cloudflare: new FixtureOrigin("cloudflare", portOf(endpoints.cloudflare.origin), FIXTURE_ROOT),
     vercel: new FixtureOrigin("vercel", portOf(endpoints.vercel.origin), FIXTURE_ROOT),
   };
-  const browser = new BrowserSession(`blip-${name}`);
+  const downloads = resolve(`.work/tmp/downloads/${name}`);
+  rmSync(downloads, { recursive: true, force: true });
+  mkdirSync(downloads, { recursive: true });
+  const browser = new BrowserSession(`blip-${name}`, downloads);
   try {
     for (const origin of Object.values(origins)) await origin.start();
     await scenario({ browser, origins });
@@ -408,11 +412,111 @@ async function intervalsScenario({ browser, origins }: Stack): Promise<void> {
   await browser.command("click", "#stop");
 }
 
+const EXPORTS = resolve(".work/tmp/exports");
+
+function assertNearlyEqual(actual: unknown, expected: unknown, path: string): void {
+  if (typeof actual === "number" && typeof expected === "number") {
+    assert.ok(Math.abs(actual - expected) <= 1e-9 * Math.max(1, Math.abs(expected)), `${path}: ${actual} != ${expected}`);
+    return;
+  }
+  if (typeof actual !== "object" || actual === null || typeof expected !== "object" || expected === null) {
+    assert.equal(actual, expected, path);
+    return;
+  }
+  const keys = new Set([...Object.keys(actual), ...Object.keys(expected)]);
+  for (const key of keys) {
+    assertNearlyEqual((actual as Record<string, unknown>)[key], (expected as Record<string, unknown>)[key], `${path}.${key}`);
+  }
+}
+
+async function downloadExports(browser: BrowserSession, directory: string): Promise<{ json: string; csv: string }> {
+  rmSync(directory, { recursive: true, force: true });
+  mkdirSync(directory, { recursive: true });
+  const before = new Set(readdirSync(browser.downloads));
+  await browser.command("click", "#export");
+  const fresh = await waitFor(
+    "both export files",
+    async () => readdirSync(browser.downloads).filter((name) => !before.has(name) && !name.endsWith(".crdownload")),
+    (names) => names.length === 2,
+  );
+  const files: Record<string, string> = {};
+  for (const name of fresh) {
+    const extension = name.endsWith(".json") ? "json" : name.endsWith(".csv") ? "csv" : null;
+    assert.ok(extension, `unexpected download ${name}`);
+    assert.match(name, /^blip-127\.0\.0\.1_\d+-\d{4}-\d{2}-\d{2}T/);
+    files[extension] = resolve(directory, `export.${extension}`);
+    renameSync(resolve(browser.downloads, name), files[extension]);
+  }
+  const stems = new Set(fresh.map((name) => name.replace(/\.(json|csv)$/, "")));
+  assert.equal(stems.size, 1, "JSON and CSV came from different snapshots");
+  return { json: files.json ?? "", csv: files.csv ?? "" };
+}
+
+function summarizeCheck(paths: string[]): { code: number; output: string } {
+  try {
+    const output = execFileSync("node", ["scripts/summarize-export.ts", "--check", ...paths], { encoding: "utf8", stdio: "pipe" });
+    return { code: 0, output };
+  } catch (error) {
+    const failed = error as { status?: number; stdout?: string; stderr?: string };
+    return { code: failed.status ?? 1, output: `${failed.stdout ?? ""}${failed.stderr ?? ""}` };
+  }
+}
+
+async function exportScenario({ browser, origins }: Stack): Promise<void> {
+  await startCompare(browser, origins.cloudflare);
+  await waitFor("warm-up notice", () => summaryText(browser, "[data-warmup=active]"), (text) => text !== null);
+  await waitFor("warm-up to finish", () => summaryText(browser, "[data-warmup=active]"), (text) => text === null, 15_000);
+  await markNow(browser, "Baseline");
+  await delay(1_500);
+  origins.cloudflare.fault = { kind: "status", status: 500 };
+  origins.vercel.fault = { kind: "hang" };
+  await delay(800);
+  origins.cloudflare.fault = { kind: "ok" };
+  await markNow(browser, "Recovery");
+  await delay(1_000);
+  origins.vercel.fault = { kind: "ok" };
+
+  const running = await downloadExports(browser, resolve(EXPORTS, "running"));
+  await delay(3_500);
+  await browser.command("click", "#stop");
+  await waitFor("stop", () => graphSummary(browser), (s) => s.state === "idle");
+  const stopped = await downloadExports(browser, resolve(EXPORTS, "stopped"));
+
+  const document = parseExportJson(readFileSync(stopped.json, "utf8"));
+  assertNearlyEqual(document.displayed, await displayedReport(browser), "displayed");
+  const outcomes = new Set(document.records.map((r) => (r.kind === "attempt" ? r.result.outcome : `unsent:${r.reason}`)));
+  for (const outcome of ["ok", "http_error", "timeout", "unsent:concurrency_cap"]) {
+    assert.ok(outcomes.has(outcome), `export lacks ${outcome}: ${[...outcomes].join(", ")}`);
+  }
+  assert.equal(document.markers.length, 2);
+  const csv = readFileSync(stopped.csv, "utf8");
+  for (const type of ["run", "attempt", "unsent_range", "marker", "segment"]) {
+    assert.match(csv, new RegExp(`\\r\\n${type},`), `CSV lacks ${type} rows`);
+  }
+
+  const result = summarizeCheck([resolve(EXPORTS, "running"), resolve(EXPORTS, "stopped")]);
+  assert.equal(result.code, 0, result.output);
+  console.log(result.output.trim());
+
+  const tampered = resolve(EXPORTS, "tampered");
+  rmSync(tampered, { recursive: true, force: true });
+  mkdirSync(tampered, { recursive: true });
+  const altered = structuredClone(document);
+  const okAttempt = altered.records.find((r) => r.kind === "attempt" && r.result.outcome === "ok" && !r.warmup);
+  assert.ok(okAttempt && okAttempt.kind === "attempt" && okAttempt.result.outcome === "ok");
+  okAttempt.result.latencyMs += 5_000;
+  writeFileSync(resolve(tampered, "export.json"), JSON.stringify(altered));
+  const rejected = summarizeCheck([tampered]);
+  assert.notEqual(rejected.code, 0, "a tampered export still reproduced the displayed summary");
+  console.log("tampered export correctly failed to reproduce");
+}
+
 const SCENARIOS: Record<string, Scenario> = {
   stack: stackScenario,
   live: liveScenario,
   compare: compareScenario,
   intervals: intervalsScenario,
+  export: exportScenario,
 };
 
 const requested = process.argv[2];

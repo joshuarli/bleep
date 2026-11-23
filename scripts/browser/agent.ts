@@ -7,15 +7,17 @@ type AgentReply = { success: boolean; data: Record<string, unknown> | null; erro
 
 export class BrowserSession {
   readonly name: string;
+  readonly downloads: string;
 
-  constructor(name: string) {
+  constructor(name: string, downloads: string) {
     this.name = name;
+    this.downloads = downloads;
   }
 
   async command(...args: string[]): Promise<Record<string, unknown>> {
     let stdout: string;
     try {
-      ({ stdout } = await run("agent-browser", ["--session", this.name, "--json", ...args], {
+      ({ stdout } = await run("agent-browser", ["--session", this.name, "--download-path", this.downloads, "--json", ...args], {
         maxBuffer: 64 * 1024 * 1024,
       }));
     } catch (error) {
