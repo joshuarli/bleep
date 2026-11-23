@@ -43,8 +43,8 @@ export class BrowserSession {
     await this.command("set", "viewport", String(width), String(height));
   }
 
-  async screenshot(path: string): Promise<void> {
-    await this.command("screenshot", "--full", path);
+  async screenshot(path: string, fullPage = true): Promise<void> {
+    await this.command("screenshot", ...(fullPage ? ["--full"] : []), path);
   }
 
   async close(): Promise<void> {
