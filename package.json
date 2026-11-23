@@ -5,23 +5,30 @@
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
-    "node": "24.x"
+    "node": ">=26.13.1",
+    "pnpm": "12.21.0"
   },
+  "packageManager": "pnpm@12.21.0",
   "scripts": {
     "stamp": "node scripts/stamp.ts",
-    "check": "npm run stamp && tsc --noEmit",
-    "test": "npm run stamp && node --test \"test/**/*.test.ts\"",
-    "smoke:workerd": "npm run stamp && node scripts/smoke-workerd.ts",
-    "build:cloudflare": "npm run stamp && cf build",
-    "build:vercel-assets": "npm run stamp && vite build --config vite.vercel.config.ts",
+    "lint": "oxlint .",
+    "typecheck": "tsrs --noEmit",
+    "check": "pnpm run stamp && pnpm run lint && pnpm run typecheck && pnpm run test",
+    "test": "node --import ./scripts/stamp.ts --test \"test/**/*.test.ts\"",
+    "smoke:workerd": "pnpm run stamp && node scripts/smoke-workerd.ts",
+    "build:cloudflare": "pnpm run stamp && cf build",
+    "build:vercel-assets": "pnpm run stamp && vite build --config vite.vercel.config.ts",
     "deploy": "node scripts/deploy.ts all",
-    "dev:vercel": "npm run stamp && node scripts/serve-vercel-local.ts",
-    "accept:foundation": "npm run check && npm test && npm run build:vercel-assets && npm run build:cloudflare && cf deploy --dry-run && npm run smoke:workerd"
+    "dev:vercel": "pnpm run stamp && node scripts/serve-vercel-local.ts",
+    "accept:foundation": "pnpm run check && pnpm run build:vercel-assets && pnpm run build:cloudflare && cf deploy --dry-run && pnpm run smoke:workerd"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-rc.4",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "cf": "1.0.0-rc.2",
+    "effect": "^4.1.4",
+    "oxlint": "1.93.0",
+    "tsrs": "0.25.0-ts7.1.0-beta",
     "typescript": "7.0.2",
     "vite": "8.3.8"
   }

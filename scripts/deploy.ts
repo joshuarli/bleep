@@ -30,7 +30,7 @@ const assertClean = (when: string) => {
 assertClean("before stamping");
 const revision = git("rev-parse", "HEAD");
 
-run("npm", ["run", "stamp"]);
+run("pnpm", ["run", "stamp"]);
 const { BUILD_REVISION, BUILD_TARGET } = await import("../src/generated/build-info.ts");
 if (BUILD_REVISION !== revision || BUILD_TARGET !== "production") {
   throw new Error(`stamp produced ${BUILD_REVISION} for ${BUILD_TARGET}; expected ${revision} for production`);
@@ -38,7 +38,7 @@ if (BUILD_REVISION !== revision || BUILD_TARGET !== "production") {
 
 for (const provider of providers) {
   if (provider === "cloudflare") {
-    run("npx", ["cf", "deploy", "--message", revision]);
+    run("pnpm", ["exec", "cf", "deploy", "--message", revision]);
   } else {
     if (!existsSync(".vercel/project.json")) {
       run("vercel", ["link", "--yes", "--project", VERCEL_PROJECT]);

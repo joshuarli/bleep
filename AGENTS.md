@@ -4,14 +4,14 @@ One Vite + TypeScript frontend probes Cloudflare Workers and Vercel Fluid from t
 
 ## Commands
 
-- `npm ci` — install. Deployed functions pin Node 24; local Node 26 prints `EBADENGINE`, which you can ignore.
-- `npm run check` — stamp the build and type-check.
-- `npm test` — stamp the build and run the `node:test` suite.
-- `npm run accept:foundation` — check, test, build both providers, and run the probe contract under `workerd`.
+- `pnpm install --frozen-lockfile` — install from the stuff npm registry with the pinned Node 26.13.1 and pnpm 12.21.0. Deployed functions pin Node 24.
+- `pnpm run check` — stamp the build, lint, type-check, and test.
+- `pnpm test` — stamp the build and run the `node:test` suite.
+- `pnpm run accept:foundation` — check, test, build both providers, and run the probe contract under `workerd`.
 - `node scripts/browser/check.ts all` — verify the page in a real browser against simulated fixtures.
 - `node scripts/verify-live.ts --all` — verify the deployed probes, revisions, and location.
 
-`npm run dev:vercel` serves the local Vercel probe on 8788; `npx cf dev` serves the local page and Cloudflare probe on 8787.
+`pnpm run dev:vercel` serves the local Vercel probe on 8788; `pnpm exec cf dev` serves the local page and Cloudflare probe on 8787.
 
 ## Invariants
 
