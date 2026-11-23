@@ -43,10 +43,6 @@ export function unsentSlotsIn(record: UnsentRangeRecord, window: Window): number
 
 export type SummaryOptions = { excludeWarmup: boolean };
 
-export function inWarmup(at: Milliseconds, run: RunInfo | undefined): boolean {
-  return run !== undefined && at < run.startedAt + run.warmupMs;
-}
-
 export function summarizeEndpoint(
   provider: Provider,
   records: Iterable<MeasurementRecord>,

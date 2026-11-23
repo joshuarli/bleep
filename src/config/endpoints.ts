@@ -43,5 +43,3 @@ export const ENDPOINTS_BY_TARGET: Record<BuildTarget, EndpointMap> = {
 };
 
 export const ENDPOINTS: EndpointMap = ENDPOINTS_BY_TARGET[BUILD_TARGET];
-
-export const probeUrl = (endpoint: Endpoint, id: string): string => `${endpoint.origin}/probe?id=${id}`;

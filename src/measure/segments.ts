@@ -105,7 +105,3 @@ export function buildSegments(
   }
   return { segments, segmentOf };
 }
-
-export function segmentsOverlapping(segments: readonly Segment[], fromAt: Milliseconds, toAt: Milliseconds): Segment[] {
-  return segments.filter((segment) => segment.toAt >= fromAt && segment.fromAt < toAt);
-}
