@@ -52,6 +52,7 @@ async function proveFrom(ui: Provider): Promise<ArrangementResult[]> {
   try {
     await browser.viewport(1280, 860);
     await browser.open(`${production[ui].origin}/`);
+    await waitFor("controls", () => browser.eval<boolean>(`document.querySelector("#start") !== null`), (ready) => ready);
     await browser.command("network", "har", "start");
     await browser.command("click", "input[name=mode][value=compare]");
     await browser.command("click", "#start");
@@ -217,6 +218,7 @@ async function recordRun(ui: Provider, index: number): Promise<void> {
   try {
     await browser.viewport(1280, 860);
     await browser.open(`${production[ui].origin}/`);
+    await waitFor("controls", () => browser.eval<boolean>(`document.querySelector("#start") !== null`), (ready) => ready);
     await browser.command("click", "input[name=scale][value=15m]");
     await browser.command("click", "input[name=mode][value=compare]");
     await browser.command("click", "#start");
