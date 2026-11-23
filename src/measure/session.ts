@@ -15,6 +15,7 @@ import {
   type RunId,
   type RunInfo,
   type SelectedRate,
+  type LongTaskEvent,
   type SessionEvent,
   type Timers,
   type TimerHandle,
@@ -28,6 +29,7 @@ export const SESSION_LIMIT_MS = 60 * 60_000;
 export const WARMUP_MS = 10_000;
 export const IDLE_MS = 5_000;
 export const EVENT_CAPACITY = 5_000;
+export const LONG_TASK_CAPACITY = 1_000;
 
 export type SessionProbe = (target: ProbeTarget, id: string, cancel: AbortSignal) => Promise<ProbeResult>;
 
@@ -67,10 +69,12 @@ const MODE_PROVIDERS: Record<Mode, readonly Provider[]> = {
 export class Session {
   readonly records: Ring<MeasurementRecord>;
   readonly events: Ring<SessionEvent>;
+  readonly longTasks: Ring<LongTaskEvent>;
   readonly runs: RunInfo[] = [];
   private current: SessionState = { state: "idle" };
   private schedule: SlotSchedule | null = null;
   private selectedRate: SelectedRate = "normal";
+  private lastBurstEndsAt: Milliseconds | null = null;
   private segment = 0;
   private tickTimer: TimerHandle | null = null;
   private endTimer: TimerHandle | null = null;
@@ -90,6 +94,7 @@ export class Session {
     this.config = config;
     this.records = new Ring(config.capacity ?? RING_CAPACITY);
     this.events = new Ring(EVENT_CAPACITY);
+    this.longTasks = new Ring(LONG_TASK_CAPACITY);
   }
 
   get state(): SessionState {
@@ -150,7 +155,7 @@ export class Session {
     this.segment++;
     this.dispatchedInRun.clear();
     this.openUnsent.clear();
-    this.schedule = new SlotSchedule(now, this.selectedRate);
+    this.schedule = new SlotSchedule(now, this.selectedRate, this.lastBurstEndsAt);
     this.pushEvent({ type: "rate", runId: run.runId, at: now, targetHz: this.schedule.hzAt(now), burst: false });
     if (this.hidden) {
       this.current = { state: "paused", run, reason: "hidden" };
@@ -173,6 +178,8 @@ export class Session {
     this.stop();
     this.records.clear();
     this.events.clear();
+    this.longTasks.clear();
+    this.lastBurstEndsAt = null;
     this.runs.length = 0;
     this.lastDispatch.clear();
     this.changed();
@@ -237,7 +244,7 @@ export class Session {
   }
 
   annotateLongTask(at: Milliseconds, durationMs: Milliseconds): void {
-    this.pushEvent({ type: "longtask", at, durationMs });
+    this.longTasks.push({ type: "longtask", at, durationMs });
     this.changed();
   }
 
@@ -284,6 +291,8 @@ export class Session {
     run.endReason = reason;
     this.pushEvent({ type: "end", runId: run.runId, at: now, reason });
     this.current = { state: "idle" };
+    const burstEndsAt = this.schedule?.burstEndsAt ?? null;
+    if (burstEndsAt !== null) this.lastBurstEndsAt = Math.min(burstEndsAt, now);
     this.schedule = null;
     this.changed();
   }

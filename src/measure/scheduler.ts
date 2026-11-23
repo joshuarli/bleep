@@ -33,9 +33,14 @@ export class SlotSchedule {
   private selectedRate: SelectedRate;
   private burstUntil: Milliseconds | null = null;
 
-  constructor(start: Milliseconds, selected: SelectedRate) {
+  constructor(start: Milliseconds, selected: SelectedRate, burstUntil: Milliseconds | null) {
     this.deadline = start;
     this.selectedRate = selected;
+    this.burstUntil = burstUntil;
+  }
+
+  get burstEndsAt(): Milliseconds | null {
+    return this.burstUntil;
   }
 
   get nextDeadline(): Milliseconds {

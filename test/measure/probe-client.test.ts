@@ -186,3 +186,8 @@ test("probe IDs are 22 base64url characters from 16 random bytes", () => {
   assert.equal(id, "-_v7-_v7-_v7-_v7-_v7-w");
   assert.notEqual(newProbeId((b) => crypto.getRandomValues(b)), newProbeId((b) => crypto.getRandomValues(b)));
 });
+
+test("an empty metadata header is recorded as absent", async () => {
+  const result = await probe((time) => respondWith(time, () => probeOkResponse(ID, "cloudflare", { "x-blip-location": "" })));
+  assert.equal(result.response?.location, null);
+});

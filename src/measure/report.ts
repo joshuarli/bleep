@@ -3,7 +3,7 @@ import { phaseBoundaries, type Marker } from "./intervals.ts";
 import { buildPairs, summarizePairs, type PairSummary } from "./pairs.ts";
 import { buildSegments, type Segment } from "./segments.ts";
 import { runIndex, summarizeEndpoint, type EndpointSummary, type Window } from "./stats.ts";
-import { recordStart, type MeasurementRecord, type RunInfo } from "./types.ts";
+import type { MeasurementRecord, RunInfo } from "./types.ts";
 
 export type ReportWindow = Window & { label: string };
 
@@ -38,42 +38,37 @@ export type ReportInput = {
 
 export function buildReport(input: ReportInput): Report {
   const runs = runIndex(input.runs);
-  const { segments, segmentOf } = buildSegments(input.records, runs, phaseBoundaries(input.markers));
-  const bySegment = new Map<number, MeasurementRecord[]>();
-  for (const record of input.records) {
-    const index = segmentOf.get(record);
-    if (index === undefined) continue;
-    let list = bySegment.get(index);
-    if (list === undefined) bySegment.set(index, (list = []));
-    list.push(record);
-  }
+  const { segments } = buildSegments(input.records, runs, phaseBoundaries(input.markers));
 
   const rows: ReportRow[] = [];
-  for (const segment of segments) {
-    const records = bySegment.get(segment.index) ?? [];
-    const touches = records.some((record) =>
-      record.kind === "attempt"
-        ? record.intendedAt >= input.window.fromAt && record.intendedAt < input.window.toAt
-        : record.toIntendedAt >= input.window.fromAt && recordStart(record) < input.window.toAt,
-    );
-    if (!touches) continue;
+  segments.forEach((segment, index) => {
+    const spanEnd = segments[index + 1]?.fromAt ?? Number.POSITIVE_INFINITY;
+    const window = {
+      fromAt: Math.max(input.window.fromAt, segment.fromAt),
+      toAt: Math.min(input.window.toAt, spanEnd),
+    };
+    if (window.toAt <= window.fromAt) return;
     const run = runs.get(segment.runId);
     const endpoints: Partial<Record<Provider, EndpointSummary>> = {};
+    let scheduled = 0;
     for (const provider of run?.providers ?? []) {
-      endpoints[provider] = summarizeEndpoint(provider, records, input.window, runs, {
-        excludeWarmup: input.excludeWarmup,
-      });
+      const raw = summarizeEndpoint(provider, input.records, window, runs, { excludeWarmup: false });
+      scheduled += raw.sent + raw.unsent;
+      endpoints[provider] = input.excludeWarmup
+        ? summarizeEndpoint(provider, input.records, window, runs, { excludeWarmup: true })
+        : raw;
     }
+    if (scheduled === 0) return;
     let pairs: PairSummary | null = null;
     if (run?.mode === "compare") {
-      const built = buildPairs(records, runs, input.window);
+      const built = buildPairs(input.records, runs, window);
       pairs = summarizePairs(built.pairs, built.incomplete, { excludeWarmup: input.excludeWarmup });
     }
     rows.push({
       segmentIndex: segment.index,
       runId: segment.runId,
-      fromAt: Math.max(segment.fromAt, input.window.fromAt),
-      toAt: Math.min(segment.toAt, input.window.toAt),
+      fromAt: window.fromAt,
+      toAt: Math.max(window.fromAt, Math.min(window.toAt, segment.toAt)),
       phase: segment.phase,
       startReasons: segment.startReasons,
       locations: segment.locations,
@@ -82,6 +77,6 @@ export function buildReport(input: ReportInput): Report {
       endpoints,
       pairs,
     });
-  }
+  });
   return { window: input.window, excludeWarmup: input.excludeWarmup, spansSegments: rows.length > 1, rows };
 }

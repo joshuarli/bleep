@@ -54,7 +54,7 @@ These are failed requests, not packet loss. Each probe is an application request
 | --- | --- |
 | Normal rate | 5 requests per second per destination |
 | Low rate | 1 per second per destination |
-| Burst | 20 per second for 30 s, then the selected rate. Another burst is available 60 s after a burst ends. |
+| Burst | 20 per second for 30 s, then the selected rate. Stopping ends a burst. Another burst is available 60 s after a burst ends, including in a new run. |
 | Timeout | 3,000 ms per request |
 | In-flight cap | 4 per destination |
 | Session length | 10 minutes. Each extension adds 10 minutes, up to 60 minutes. |
@@ -86,7 +86,7 @@ Compare mode sends to both destinations on shared slots. Each pair has a `pairSe
 - **Dispatch skew:** the absolute difference of the two actual dispatch times. Pairs over 5 ms stay in the raw data and counts, are flagged, and are left out of the median paired difference.
 - **Paired difference:** `Vercel duration − Cloudflare duration`, only for pairs where both are `ok`. A positive value means Vercel took longer.
 - **Median paired difference:** the nearest-rank median of paired differences. The monitor never shows a p95 of paired differences or a difference of p95s.
-- **Pair categories:** `both_ok`, `cloudflare_only`, `vercel_only`, `neither_valid` (both sent, neither `ok`), and `not_fully_sent` (a side unsent and no side `ok`).
+- **Pair categories:** `both_ok`, `cloudflare_only`, `vercel_only`, `neither_valid` (both attempted, neither `ok`), and `not_fully_sent` (a side unsent or cancelled, and no side `ok`).
 - **Warm-up:** each compare run starts with a fixed 10 s warm-up. Warm-up samples are kept and drawn, and they are left out of summaries.
 
 The comparison cannot isolate JavaScript runtime performance. It includes routing, geography, transport behavior, browser scheduling, and platform handling.

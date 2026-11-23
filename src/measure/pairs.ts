@@ -38,13 +38,15 @@ export type PairSummary = {
 const okLatency = (side: Side): Milliseconds | null =>
   side.kind === "attempt" && side.record.result.outcome === "ok" ? side.record.result.latencyMs : null;
 
+const notSent = (side: Side) => side.kind === "unsent" || side.record.result.outcome === "cancelled";
+
 function categorize(cloudflare: Side, vercel: Side): PairCategory {
   const cf = okLatency(cloudflare) !== null;
   const v = okLatency(vercel) !== null;
   if (cf && v) return "both_ok";
   if (cf) return "cloudflare_only";
   if (v) return "vercel_only";
-  return cloudflare.kind === "unsent" || vercel.kind === "unsent" ? "not_fully_sent" : "neither_valid";
+  return notSent(cloudflare) || notSent(vercel) ? "not_fully_sent" : "neither_valid";
 }
 
 export function buildPairs(

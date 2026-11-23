@@ -293,3 +293,30 @@ test("compare mode pairs slots, alternates dispatch order, and flags warm-up and
     assert.equal(attempts[0]?.sameOrigin, provider === "cloudflare");
   }
 });
+
+test("stopping and starting again does not skip the burst cooldown", async () => {
+  const h = harness();
+  h.session.start("cloudflare");
+  assert.equal(h.session.startBurst(), true);
+  await h.runFor(1_000);
+  h.session.stop();
+  h.session.start("cloudflare");
+  assert.equal(h.session.startBurst(), false);
+  assert.equal(h.session.targetHz(), 5);
+  await h.runFor(60_000 - 10);
+  assert.equal(h.session.startBurst(), false);
+  await h.runFor(20);
+  assert.equal(h.session.startBurst(), true);
+});
+
+test("long-task annotations cannot evict pause events", async () => {
+  const h = harness();
+  h.session.start("cloudflare");
+  h.session.pause();
+  for (let i = 0; i < 10_000; i++) h.session.annotateLongTask(i, 60);
+  h.session.resume();
+  const types = h.session.events.toArray().map((event) => event.type);
+  assert.ok(types.includes("pause") && types.includes("resume"));
+  assert.ok(h.session.longTasks.size <= 1_000);
+  assert.ok(h.session.longTasks.discarded > 0);
+});

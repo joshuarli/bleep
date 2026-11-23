@@ -126,7 +126,9 @@ export type SessionEvent =
   | { type: "resume"; runId: RunId; at: Milliseconds; segment: number }
   | { type: "rate"; runId: RunId; at: Milliseconds; targetHz: number; burst: boolean }
   | { type: "end"; runId: RunId; at: Milliseconds; reason: EndReason }
-  | { type: "longtask"; at: Milliseconds; durationMs: Milliseconds };
+  | LongTaskEvent;
+
+export type LongTaskEvent = { type: "longtask"; at: Milliseconds; durationMs: Milliseconds };
 
 export const recordStart = (record: MeasurementRecord): Milliseconds =>
   record.kind === "attempt" ? record.intendedAt : record.fromIntendedAt;

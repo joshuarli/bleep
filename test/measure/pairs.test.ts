@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildPairs, summarizePairs } from "../../src/measure/pairs.ts";
+import { buildReport } from "../../src/measure/report.ts";
 import { runIndex } from "../../src/measure/stats.ts";
 import type { MeasurementRecord } from "../../src/measure/types.ts";
 import { attempt, run, unsent } from "./records.ts";
@@ -110,4 +111,30 @@ test("single-endpoint runs never form pairs", () => {
   const single = runIndex([run({ mode: "cloudflare", providers: ["cloudflare"] })]);
   const { pairs, incomplete } = buildPairs([attempt({ provider: "cloudflare", slot: 0 })], single, ALL);
   assert.deepEqual([pairs.length, incomplete], [0, 0]);
+});
+
+test("pairs cancelled on both sides are not counted as both sent and failed", () => {
+  const records = [
+    attempt({ provider: "cloudflare", slot: 0, outcome: "cancelled" }),
+    attempt({ provider: "vercel", slot: 0, outcome: "cancelled" }),
+    attempt({ provider: "cloudflare", slot: 1, outcome: "timeout" }),
+    attempt({ provider: "vercel", slot: 1, outcome: "cancelled" }),
+  ];
+  const { pairs } = buildPairs(records, runs, ALL);
+  assert.deepEqual(pairs.map((p) => p.category), ["not_fully_sent", "not_fully_sent"]);
+});
+
+test("a location change on one side never splits a completed pair across report rows", () => {
+  const records = [
+    attempt({ provider: "cloudflare", slot: 0, latencyMs: 10, response: { location: "SJC" } }),
+    attempt({ provider: "vercel", slot: 0, latencyMs: 20, response: { location: "sfo1" } }),
+    attempt({ provider: "vercel", slot: 1, latencyMs: 21, response: { location: "sfo1" } }),
+    attempt({ provider: "cloudflare", slot: 1, latencyMs: 11, response: { location: "LAX" } }),
+    attempt({ provider: "vercel", slot: 2, latencyMs: 22, response: { location: "sfo1" } }),
+    attempt({ provider: "cloudflare", slot: 2, latencyMs: 12, response: { location: "LAX" } }),
+  ];
+  const report = buildReport({ records, runs: [run()], markers: [], window: { ...ALL, label: "all" }, excludeWarmup: false });
+  assert.equal(report.rows.length, 2);
+  for (const row of report.rows) assert.equal(row.pairs?.incomplete, 0);
+  assert.deepEqual(report.rows.map((row) => row.pairs?.counts.both_ok), [1, 2]);
 });

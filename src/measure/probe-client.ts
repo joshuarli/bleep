@@ -40,7 +40,7 @@ export const probeRequestUrl = (target: ProbeTarget, id: string): string =>
 export const expectedProbeBody = (id: string): string => `{"v":1,"id":"${id}"}`;
 
 function readMeta(response: Response, nextHopProtocol: string | null): ResponseMeta {
-  const header = (name: string) => response.headers.get(name);
+  const header = (name: string) => response.headers.get(name) || null;
   return {
     status: response.status,
     revision: header("x-blip-revision"),

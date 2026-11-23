@@ -86,7 +86,12 @@ export function buildSegments(
         reasons.push("revision");
       }
     }
-    if (current === null || reasons.length > 0) current = open(record, reasons, carry);
+    if (current === null || reasons.length > 0) {
+      current = open(record, reasons, carry);
+      if (phase !== null && reasons.includes("phase") && !reasons.includes("run") && !reasons.includes("resume")) {
+        current.fromAt = Math.min(current.fromAt, phase.at);
+      }
+    }
 
     if (meta !== null) {
       if (meta.location !== null) current.locations[record.provider] = meta.location;
