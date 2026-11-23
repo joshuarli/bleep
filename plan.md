@@ -3,14 +3,14 @@
 ## Status
 
 - **Goal:** a browser network-responsiveness monitor, deployed to Cloudflare and Vercel from one revision, that shows both destinations on one timeline during controlled experiments and exports reproducible evidence.
-- **Last accepted revision:** `6588059` (M3, milestone M-A passed).
-- **Accepted:** F0, L0, M1, M2, M3.
+- **Last accepted revision:** `0a9afe5` (L1 accepted; milestones M-A and M-B passed).
+- **Accepted:** F0, L0, M1, M2, M3, H1, X1, U1, U2, U3, X2, D1, L1.
 - **Red:** none.
 - **Parked:** none.
-- **Next slice:** H1, then X1, then U1.
-- **First command:** `npm ci && npm run accept:foundation`
-- **Live:** `https://blip-monitor.joshua-r-li-98.workers.dev` and `https://blip-monitor.vercel.app`, both at `7b5c342`, Vercel observed in `sfo1`. `node scripts/deploy.ts all` deploys the clean HEAD; `node scripts/verify-live.ts --contract|--all` checks it.
-- **Decisions later slices depend on:** builds read `BLIP_TARGET` (`production`, `local`, `fixture`, default `local`) through `scripts/stamp.ts`; the deploy script forces `production`. Fixture endpoints are `127.0.0.1:8791` (Cloudflare) and `127.0.0.1:8792` (Vercel); local endpoints are `8787` and `8788`. "Attempted" counts sent requests other than `cancelled`; cancellations and unsent slots are reported separately, and coverage is `ok / (attempted + unsent)`. Lanes were not used: each slice was cheaper serially.
+- **Next slice:** L2 (runs recording), then O1, then Z1.
+- **First command:** `npm ci && npm run accept:foundation && node scripts/browser/check.ts all`
+- **Live:** `https://blip-monitor.joshua-r-li-98.workers.dev` and `https://blip-monitor.vercel.app`, both at product revision `adbe433`, Vercel observed in `sfo1`. `node scripts/deploy.ts all` deploys the clean HEAD; `node scripts/verify-live.ts --all` checks it; `node scripts/browser/live.ts [proof|runs]` drives the hosted pages.
+- **Decisions later slices depend on:** builds read `BLIP_TARGET` (`production`, `local`, `fixture`, default `local`) through `scripts/stamp.ts`; the deploy script forces `production`. Fixture endpoints are `127.0.0.1:8791` and `127.0.0.1:8792`. "Attempted" excludes `cancelled`; coverage is `ok / (attempted + unsent)`. Every marker starts a phase and an interval. One export button writes JSON and CSV from one snapshot, and JSON exports are compact. Preflights are counted from HAR captures, because `agent-browser network requests` omits them. Lanes were not used: each slice was cheaper serially.
 
 The campaign answers two questions:
 
