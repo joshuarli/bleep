@@ -162,43 +162,91 @@ async function proveFrom(ui: Provider): Promise<ArrangementResult[]> {
   }
 }
 
-rmSync(EVIDENCE, { recursive: true, force: true });
-mkdirSync(EVIDENCE, { recursive: true });
-const arrangements: ArrangementResult[] = [];
-for (const ui of PROVIDERS) arrangements.push(...(await proveFrom(ui)));
+async function proof(): Promise<void> {
+  rmSync(EVIDENCE, { recursive: true, force: true });
+  mkdirSync(EVIDENCE, { recursive: true });
+  const arrangements: ArrangementResult[] = [];
+  for (const ui of PROVIDERS) arrangements.push(...(await proveFrom(ui)));
 
-const check = summarizeCheck([EVIDENCE]);
-assert.equal(check.code, 0, check.output);
+  const check = summarizeCheck([EVIDENCE]);
+  assert.equal(check.code, 0, check.output);
 
-const ms = (value: number | null) => (value === null ? "–" : `${value.toFixed(1)} ms`);
-const rows = arrangements.map(
-  (a) =>
-    `| ${a.ui} page | ${a.probe} probe | ${a.origin} | ${a.ok} of ${a.attempted} | ${a.failed} | ${a.unsent} | ${ms(a.medianMs)} | ${a.locations.join(", ")} | ${a.protocols.join(", ") || "not reported"} |`,
-);
-writeFileSync(
-  resolve(EVIDENCE, "README.md"),
-  `# Live browser proof
+  const ms = (value: number | null) => (value === null ? "–" : `${value.toFixed(1)} ms`);
+  const rows = arrangements.map(
+    (a) =>
+      `| ${a.ui} page | ${a.probe} probe | ${a.origin} | ${a.ok} of ${a.attempted} | ${a.failed} | ${a.unsent} | ${ms(a.medianMs)} | ${a.locations.join(", ")} | ${a.protocols.join(", ") || "not reported"} |`,
+  );
+  writeFileSync(
+    resolve(EVIDENCE, "README.md"),
+    `# Live browser proof
 
-\`node scripts/browser/live.ts\` produced these files on ${new Date().toISOString().slice(0, 10)} from one machine and network. They are a functional proof, not a performance result.
+  \`node scripts/browser/live.ts\` produced these files on ${new Date().toISOString().slice(0, 10)} from one machine and network. They are a functional proof, not a performance result.
 
-Both pages and both probes ran revision \`${head}\`. Each page ran Compare mode in headless Chrome for about ${MEASURE_MS / 1_000} s after the 10 s warm-up, with one pause and resume. The figures below exclude the warm-up and cancelled requests.
+  Both pages and both probes ran revision \`${head}\`. Each page ran Compare mode in headless Chrome for about ${MEASURE_MS / 1_000} s after the 10 s warm-up, with one pause and resume. The figures below exclude the warm-up and cancelled requests.
 
-| Page | Probe | Arrangement | Successful of attempted | Failed | Not sent | Median | Observed location | Protocol |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-${rows.join("\n")}
+  | Page | Probe | Arrangement | Successful of attempted | Failed | Not sent | Median | Observed location | Protocol |
+  | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+  ${rows.join("\n")}
 
-The check also verified these facts:
+  The check also verified these facts:
 
-- No probe request from either page caused an \`OPTIONS\` preflight. A control request with a custom header did cause one, so the check can fail.
-- Every probe ID was unique, and every successful response echoed its ID byte for byte.
-- Every backend reported the page's revision. Vercel reported \`sfo1\`.
-- Each page paused and resumed, and neither page overflows horizontally at 390 × 844.
-- Each export reproduces the summary its page displayed: \`node scripts/summarize-export.ts --check docs/evidence/live\`.
+  - No probe request from either page caused an \`OPTIONS\` preflight. A control request with a custom header did cause one, so the check can fail.
+  - Every probe ID was unique, and every successful response echoed its ID byte for byte.
+  - Every backend reported the page's revision. Vercel reported \`sfo1\`.
+  - Each page paused and resumed, and neither page overflows horizontally at 390 × 844.
+  - Each export reproduces the summary its page displayed: \`node scripts/summarize-export.ts --check docs/evidence/live\`.
 
-\`node scripts/verify-live.ts --all\` covers the server side: anonymous access, the probe contract, nonce echoes, \`no-store\` with no cache hits, CORS on success and errors, and that Vercel is not served through Cloudflare.
+  \`node scripts/verify-live.ts --all\` covers the server side: anonymous access, the probe contract, nonce echoes, \`no-store\` with no cache hits, CORS on success and errors, and that Vercel is not served through Cloudflare.
 
-The exports contain no credentials or IP addresses. They contain random probe IDs, page-relative times, and the raw \`cf-ray\` and \`x-vercel-id\` request identifiers.
-`,
-);
-console.log(rows.join("\n"));
-console.log("live browser proof passed");
+  The exports contain no credentials or IP addresses. They contain random probe IDs, page-relative times, and the raw \`cf-ray\` and \`x-vercel-id\` request identifiers.
+  `,
+  );
+  console.log(rows.join("\n"));
+  console.log("live browser proof passed");
+}
+
+const RUNS = resolve("docs/evidence/runs");
+const RUN_COUNT = 3;
+const RUN_MS = 130_000;
+
+async function recordRun(ui: Provider, index: number): Promise<void> {
+  const downloads = resolve(`.work/tmp/downloads/run-${ui}-${index}`);
+  rmSync(downloads, { recursive: true, force: true });
+  mkdirSync(downloads, { recursive: true });
+  const browser = new BrowserSession(`blip-run-${ui}`, downloads);
+  try {
+    await browser.viewport(1280, 860);
+    await browser.open(`${production[ui].origin}/`);
+    await browser.command("click", "input[name=scale][value=15m]");
+    await browser.command("click", "input[name=mode][value=compare]");
+    await browser.command("click", "#start");
+    await delay(RUN_MS);
+    await browser.command("click", "#stop");
+    await waitFor("stop", () => graphSummary(browser), (s) => s.state === "idle");
+    const files = await downloadExports(browser, resolve(".work/tmp/run-export", `${ui}-${index}`));
+    renameSync(files.json, resolve(RUNS, `${ui}-ui-run${index}.json`));
+    renameSync(files.csv, resolve(RUNS, `${ui}-ui-run${index}.csv`));
+    console.log(`${ui} UI run ${index} saved`);
+  } finally {
+    await browser.close();
+  }
+}
+
+async function runs(): Promise<void> {
+  rmSync(RUNS, { recursive: true, force: true });
+  mkdirSync(RUNS, { recursive: true });
+  for (let index = 1; index <= RUN_COUNT; index++) {
+    for (const ui of PROVIDERS) await recordRun(ui, index);
+  }
+  const check = summarizeCheck([RUNS]);
+  assert.equal(check.code, 0, check.output);
+  console.log(check.output.trim());
+}
+
+const mode = process.argv[2] ?? "proof";
+if (mode === "proof") await proof();
+else if (mode === "runs") await runs();
+else {
+  console.error("usage: node scripts/browser/live.ts [proof|runs]");
+  process.exit(2);
+}
