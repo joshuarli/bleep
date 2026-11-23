@@ -18,6 +18,7 @@ export type GraphSummary = {
   inflight: number;
   records: number;
   maxFrameMs: number;
+  summaryRefreshes: number;
   okPoints: Record<Provider, number>;
   failures: Record<Provider, number>;
   unsentSlots: Record<Provider, number>;

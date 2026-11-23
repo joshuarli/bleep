@@ -188,11 +188,11 @@ buildExportPanel(exportSection, () => {
       earlierSamplesLost: retention.discarded > 0,
       fromAt: retention.fromAt,
       toAt: retention.toAt,
-      eventsDiscarded: session.events.discarded,
+      eventsDiscarded: session.events.discarded + session.longTasks.discarded,
     },
     runs: session.runs,
     records: session.records.toArray(),
-    events: session.events.toArray(),
+    events: [...session.events, ...session.longTasks].sort((a, b) => a.at - b.at),
     markers,
     experiment,
     displayed: displayedReport,
@@ -247,6 +247,7 @@ function viewEnd(nowAt: number): number {
 let lastSummaryAt = Number.NEGATIVE_INFINITY;
 let summaryVersion = "";
 let displayedReport: Report | null = null;
+let summaryRefreshes = 0;
 
 function refreshSummary(nowAt: number): void {
   const endAt = viewEnd(nowAt);
@@ -278,6 +279,7 @@ function refreshSummary(nowAt: number): void {
     warmup: warmupLeft > 0 ? { remainingMs: warmupLeft } : null,
   });
   displayedReport = report;
+  summaryRefreshes++;
   markerPanel.updateComparison(
     compareIntervals(session.records.toArray(), session.runs, markers, selectedIntervals(nowAt), experiment.baseline),
   );
@@ -335,8 +337,7 @@ function frame(): void {
     refreshSummary(nowAt);
   }
   maxFrameMs = Math.max(maxFrameMs, performance.now() - started);
-  markersChanged();
-requestAnimationFrame(frame);
+  requestAnimationFrame(frame);
 }
 
 function publish(nowAt: number): void {
@@ -364,9 +365,16 @@ function publish(nowAt: number): void {
     );
   }
   if (stats.pauseBands > 0) parts.push(`${stats.pauseBands} paused period${stats.pauseBands === 1 ? "" : "s"}.`);
+  const kept = session.retention();
+  if (kept.fromAt !== null) {
+    const span = Math.round((viewEnd(nowAt) - kept.fromAt) / 1_000);
+    parts.push(
+      `Keeping ${kept.size} records covering the last ${span} s${kept.discarded > 0 ? `; ${kept.discarded} older records were discarded` : ""}.`,
+    );
+  }
   const text = parts.join(" ");
   if (caption.textContent !== text) caption.textContent = text;
-  const retention = session.retention();
+  const retention = kept;
   figure.dataset.summary = JSON.stringify({
     state: state.state,
     pauseReason: state.state === "paused" ? state.reason : null,
@@ -378,6 +386,7 @@ function publish(nowAt: number): void {
     records: retention.size,
     discarded: retention.discarded,
     maxFrameMs,
+    summaryRefreshes,
     ...stats,
   });
 }

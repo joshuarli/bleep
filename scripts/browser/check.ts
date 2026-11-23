@@ -213,6 +213,11 @@ async function liveScenario({ browser, origins }: Stack): Promise<void> {
   const stopped = await waitFor("stop", () => graphSummary(browser), (s) => s.state === "idle");
   assert.equal(stopped.inflight, 0);
   assert.ok(stopped.maxFrameMs < 250, `frame task ${stopped.maxFrameMs} ms`);
+  await delay(300);
+  const settled = await graphSummary(browser);
+  await delay(1_000);
+  const later = await graphSummary(browser);
+  assert.ok(later.summaryRefreshes - settled.summaryRefreshes <= 1, `summary refreshed ${later.summaryRefreshes - settled.summaryRefreshes} times while idle`);
   console.log(`max frame task ${stopped.maxFrameMs.toFixed(1)} ms`);
 }
 

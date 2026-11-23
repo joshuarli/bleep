@@ -6,7 +6,7 @@ const CATEGORY_LABELS: Record<PairCategory, string> = {
   cloudflare_only: "Only Cloudflare succeeded",
   vercel_only: "Only Vercel succeeded",
   neither_valid: "Both sent, neither succeeded",
-  not_fully_sent: "A side was not sent, neither succeeded",
+  not_fully_sent: "A side was not sent or was cancelled, neither succeeded",
 };
 
 export function describeDifference(summary: PairSummary): string {
