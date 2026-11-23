@@ -2,14 +2,14 @@
 
   `node scripts/browser/live.ts` produced these files on 2026-11-23 from one machine and network. They are a functional proof, not a performance result.
 
-  Both pages and both probes ran revision `b8b0f92b8183b0a4b34a0eabe1f45a562ca9759a`. Each page ran Compare mode in headless Chrome for about 8 s after the 10 s warm-up, with one pause and resume. The figures below exclude the warm-up and cancelled requests.
+  Both pages and both probes ran revision `f13582e3e4ee2b895047d8d1680d32d437674bef`. Each page ran Compare mode in headless Chrome for about 8 s after the 10 s warm-up, with one pause and resume. The figures below exclude the warm-up and cancelled requests.
 
   | Page | Probe | Arrangement | Successful of attempted | Failed | Not sent | Median | Observed location | Protocol |
   | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-  | cloudflare page | cloudflare probe | same-origin | 48 of 48 | 0 | 0 | 21.1 ms | SJC | h3 |
-| cloudflare page | vercel probe | cross-origin | 48 of 48 | 0 | 0 | 35.3 ms | sfo1 | h2 |
-| vercel page | cloudflare probe | cross-origin | 46 of 46 | 0 | 0 | 23.5 ms | SJC | h3 |
-| vercel page | vercel probe | same-origin | 46 of 46 | 0 | 0 | 33.2 ms | sfo1 | h2 |
+  | cloudflare page | cloudflare probe | same-origin | 46 of 46 | 0 | 0 | 18.4 ms | SJC | h3 |
+| cloudflare page | vercel probe | cross-origin | 46 of 46 | 0 | 0 | 33.7 ms | sfo1 | h2 |
+| vercel page | cloudflare probe | cross-origin | 46 of 46 | 0 | 0 | 37.2 ms | SJC | h3 |
+| vercel page | vercel probe | same-origin | 46 of 46 | 0 | 0 | 33.4 ms | sfo1 | h2 |
 
   The check also verified these facts:
 
