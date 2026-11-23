@@ -3,14 +3,14 @@
 ## Status
 
 - **Goal:** a browser network-responsiveness monitor, deployed to Cloudflare and Vercel from one revision, that shows both destinations on one timeline during controlled experiments and exports reproducible evidence.
-- **Last accepted revision:** `0a9afe5` (L1 accepted; milestones M-A and M-B passed).
-- **Accepted:** F0, L0, M1, M2, M3, H1, X1, U1, U2, U3, X2, D1, L1.
+- **Last accepted revision:** `984d3ef`. Product code is deployed at `f13582e` on both providers (Cloudflare version `22d325d5-14a1-4102-8532-e7458bc19259`, Vercel deployment `blip-monitor-ckmwfdxg2`). Later commits touch only docs and evidence.
+- **Accepted:** F0, L0, M1, M2, M3, H1, X1, U1, U2, U3, X2, D1, L1, L2, O1, Z1. Milestones M-A and M-B passed.
 - **Red:** none.
 - **Parked:** none.
-- **Next slice:** L2 (runs recording), then O1, then Z1.
-- **First command:** `npm ci && npm run accept:foundation && node scripts/browser/check.ts all`
-- **Live:** `https://blip-monitor.joshua-r-li-98.workers.dev` and `https://blip-monitor.vercel.app`, both at product revision `adbe433`, Vercel observed in `sfo1`. `node scripts/deploy.ts all` deploys the clean HEAD; `node scripts/verify-live.ts --all` checks it; `node scripts/browser/live.ts [proof|runs]` drives the hosted pages.
-- **Decisions later slices depend on:** builds read `BLIP_TARGET` (`production`, `local`, `fixture`, default `local`) through `scripts/stamp.ts`; the deploy script forces `production`. Fixture endpoints are `127.0.0.1:8791` and `127.0.0.1:8792`. "Attempted" excludes `cancelled`; coverage is `ok / (attempted + unsent)`. Every marker starts a phase and an interval. One export button writes JSON and CSV from one snapshot, and JSON exports are compact. Preflights are counted from HAR captures, because `agent-browser network requests` omits them. Lanes were not used: each slice was cheaper serially.
+- **Needs the owner:** Vercel Active CPU for L2. The CLI `metrics` command needs a Pro plan, so read it from the project's usage page. The Bay Area experiment and the physical-phone check are under **Needs environment**.
+- **O1:** first-load JS 18.6 KB gzip (budget 50). Full-ring heap growth 23.7 MB (budget 32). Full-ring frame work 9 ms median and 23 ms max in Chrome (budget 50). Perf gate deferred: host busy, measured under load. The probe handlers bundle only the shared module and build info.
+- **First command:** `npm ci && npm run accept:foundation && node scripts/browser/check.ts all && node scripts/verify-live.ts --all`
+- **Decisions later work depends on:** builds read `BLIP_TARGET` through `scripts/stamp.ts`, and the deploy script forces `production`. "Attempted" excludes `cancelled`, and a cancelled side makes a pair `not_fully_sent`. Report rows are clipped to segment time spans, and a marker starts its phase exactly. One export button writes JSON and CSV from one snapshot. Preflights are counted from HAR captures, because `agent-browser network requests` omits them. No lanes were used.
 
 The campaign answers two questions:
 
