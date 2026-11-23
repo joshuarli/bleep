@@ -25,7 +25,8 @@ Install dependencies first with `npm ci`. Deployed functions run Node 24. Local 
 | `npm test` | Runs the unit tests |
 | `npm run accept:foundation` | Checks, tests, builds both providers, and runs the probe contract under `workerd` |
 | `node scripts/browser/check.ts <stack\|live\|compare\|intervals\|export\|all>` | Builds the page against simulated fixture endpoints and verifies it in a real browser through `agent-browser` |
-| `npx cf dev` | Serves the Cloudflare build locally on port 8787 |
+| `npx cf dev` | Serves the page and the Cloudflare probe locally on port 8787 |
+| `npm run dev:vercel` | Serves the Vercel probe adapter locally on port 8788, so the local page can probe both |
 | `node scripts/summarize-export.ts [--check] <files or directories>` | Summarizes exports, or checks that they reproduce the displayed summary |
 
 Builds read `BLIP_TARGET` (`production`, `local`, or `fixture`, default `local`) to choose which endpoints the page probes. The page never takes an endpoint from its URL or from user input. Local and fixture results are simulated.

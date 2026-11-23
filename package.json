@@ -15,6 +15,7 @@
     "build:cloudflare": "npm run stamp && cf build",
     "build:vercel-assets": "npm run stamp && vite build --config vite.vercel.config.ts",
     "deploy": "node scripts/deploy.ts all",
+    "dev:vercel": "npm run stamp && node scripts/serve-vercel-local.ts",
     "accept:foundation": "npm run check && npm test && npm run build:vercel-assets && npm run build:cloudflare && cf deploy --dry-run && npm run smoke:workerd"
   },
   "devDependencies": {
