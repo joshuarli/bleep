@@ -59,3 +59,74 @@ export type ProbeResult = ProbeTiming &
   );
 
 export type ProbeTarget = { provider: Provider; origin: string };
+
+export const MODES = ["cloudflare", "vercel", "compare"] as const;
+export type Mode = (typeof MODES)[number];
+
+export const SELECTED_RATES = ["normal", "low"] as const;
+export type SelectedRate = (typeof SELECTED_RATES)[number];
+
+export type RunId = string;
+
+export type RunInfo = {
+  runId: RunId;
+  mode: Mode;
+  providers: readonly Provider[];
+  endpoints: Record<Provider, string>;
+  uiOrigin: string;
+  uiRevision: string;
+  startedAt: Milliseconds;
+  startedAtWallMs: number;
+  endsAt: Milliseconds;
+  endedAt: Milliseconds | null;
+  endReason: "stopped" | "session_limit" | null;
+  timeoutMs: Milliseconds;
+  inflightCap: number;
+  warmupMs: Milliseconds;
+};
+
+type SlotFields = {
+  runId: RunId;
+  segment: number;
+  provider: Provider;
+  targetHz: number;
+};
+
+export type AttemptRecord = SlotFields & {
+  kind: "attempt";
+  slot: number;
+  pairSeq: number | null;
+  probeId: string;
+  intendedAt: Milliseconds;
+  sameOrigin: boolean;
+  firstInRun: boolean;
+  firstAfterIdle: boolean;
+  warmup: boolean;
+  result: ProbeResult;
+};
+
+export type UnsentRangeRecord = SlotFields & {
+  kind: "unsent";
+  reason: UnsentReason;
+  fromSlot: number;
+  toSlot: number;
+  count: number;
+  fromIntendedAt: Milliseconds;
+  toIntendedAt: Milliseconds;
+  suspectedSuspension: boolean;
+};
+
+export type MeasurementRecord = AttemptRecord | UnsentRangeRecord;
+
+export type SessionEvent =
+  | { type: "pause"; runId: RunId; at: Milliseconds; reason: "hidden" | "user" }
+  | { type: "resume"; runId: RunId; at: Milliseconds; segment: number }
+  | { type: "rate"; runId: RunId; at: Milliseconds; targetHz: number; burst: boolean }
+  | { type: "end"; runId: RunId; at: Milliseconds; reason: "stopped" | "session_limit" }
+  | { type: "longtask"; at: Milliseconds; durationMs: Milliseconds };
+
+export const recordStart = (record: MeasurementRecord): Milliseconds =>
+  record.kind === "attempt" ? record.intendedAt : record.fromIntendedAt;
+
+export const recordEnd = (record: MeasurementRecord): Milliseconds =>
+  record.kind === "attempt" ? record.intendedAt : record.toIntendedAt;
