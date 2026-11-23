@@ -68,6 +68,9 @@ export type SelectedRate = (typeof SELECTED_RATES)[number];
 
 export type RunId = string;
 
+export const END_REASONS = ["stopped", "session_limit"] as const;
+export type EndReason = (typeof END_REASONS)[number];
+
 export type RunInfo = {
   runId: RunId;
   mode: Mode;
@@ -79,7 +82,7 @@ export type RunInfo = {
   startedAtWallMs: number;
   endsAt: Milliseconds;
   endedAt: Milliseconds | null;
-  endReason: "stopped" | "session_limit" | null;
+  endReason: EndReason | null;
   timeoutMs: Milliseconds;
   inflightCap: number;
   warmupMs: Milliseconds;
@@ -122,7 +125,7 @@ export type SessionEvent =
   | { type: "pause"; runId: RunId; at: Milliseconds; reason: "hidden" | "user" }
   | { type: "resume"; runId: RunId; at: Milliseconds; segment: number }
   | { type: "rate"; runId: RunId; at: Milliseconds; targetHz: number; burst: boolean }
-  | { type: "end"; runId: RunId; at: Milliseconds; reason: "stopped" | "session_limit" }
+  | { type: "end"; runId: RunId; at: Milliseconds; reason: EndReason }
   | { type: "longtask"; at: Milliseconds; durationMs: Milliseconds };
 
 export const recordStart = (record: MeasurementRecord): Milliseconds =>
