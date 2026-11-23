@@ -7,10 +7,13 @@ import { buildSegments, type Segment } from "../measure/segments.ts";
 import { Session, SESSION_EXTENSION_MS, SESSION_LIMIT_MS } from "../measure/session.ts";
 import { runIndex } from "../measure/stats.ts";
 import { phaseBoundaries } from "../measure/intervals.ts";
+import { buildReport, type Report } from "../measure/report.ts";
 import { buildControls, element } from "./controls.ts";
-import { drawGraph, PROVIDER_STYLE, TIME_SCALES, type DrawStats, type TimeScale } from "./graph.ts";
+import { drawGraph, pauseBands, PROVIDER_STYLE, TIME_SCALES, type DrawStats, type TimeScale } from "./graph.ts";
+import { activeMs, latestResponseMeta, renderSummary } from "./summary.ts";
 
 const ACHIEVED_WINDOW_MS = 10_000;
+const SUMMARY_INTERVAL_MS = 500;
 
 const probeDeps = browserProbeDeps();
 const session = new Session(
@@ -44,6 +47,7 @@ const controls = buildControls(controlsRoot, {
   scale: (chosen) => {
     scale = chosen;
     lastDrawAt = Number.NEGATIVE_INFINITY;
+    lastSummaryAt = Number.NEGATIVE_INFINITY;
   },
 });
 
@@ -95,7 +99,13 @@ const endpointList = element(
   ],
 );
 
-app.append(controlsRoot, figure, endpointList);
+const summaryRoot = element("div", { id: "summary" });
+const summarySection = element("section", { className: "panel", ariaLabel: "Summary" }, [
+  element("h2", { textContent: "Summary" }),
+  summaryRoot,
+]);
+
+app.append(controlsRoot, figure, summarySection, endpointList);
 
 const longTaskObserver =
   typeof PerformanceObserver !== "undefined" && PerformanceObserver.supportedEntryTypes?.includes("longtask")
@@ -138,6 +148,44 @@ function viewEnd(nowAt: number): number {
   return last?.endedAt ?? nowAt;
 }
 
+let lastSummaryAt = Number.NEGATIVE_INFINITY;
+let summaryVersion = -1;
+let displayedReport: Report | null = null;
+
+function refreshSummary(nowAt: number): void {
+  const endAt = viewEnd(nowAt);
+  const window = { fromAt: endAt - scale.ms, toAt: endAt, label: `last ${scale.label}` };
+  const report = buildReport({
+    records: session.records.toArray(),
+    runs: session.runs,
+    markers: [],
+    window,
+    excludeWarmup: true,
+  });
+  const state = session.state;
+  const run = state.state === "idle" ? null : state.run;
+  const warmupLeft = run === null ? 0 : run.startedAt + run.warmupMs - nowAt;
+  renderSummary(summaryRoot, {
+    report,
+    nowAt,
+    activeMsIn: (fromAt, toAt) => {
+      const excluded = [
+        ...pauseBands(session.events, session.runs, nowAt),
+        ...session.runs.map((run) => ({ fromAt: run.startedAt, toAt: run.startedAt + run.warmupMs })),
+      ];
+      return activeMs({ fromAt, toAt: Math.min(toAt, nowAt) }, session.runs, excluded, nowAt);
+    },
+    targetHz: session.targetHz(),
+    endpoints: ENDPOINTS,
+    latestMeta: latestResponseMeta(session.records),
+    uiRevision: BUILD_REVISION,
+    warmup: warmupLeft > 0 ? { remainingMs: warmupLeft } : null,
+  });
+  displayedReport = report;
+  lastSummaryAt = nowAt;
+  summaryVersion = session.version;
+}
+
 let lastDrawAt = Number.NEGATIVE_INFINITY;
 let lastVersion = -1;
 let maxFrameMs = 0;
@@ -176,6 +224,13 @@ function frame(): void {
     lastDrawAt = nowAt;
     lastVersion = session.version;
     publish(nowAt);
+  }
+  if (
+    (moving && nowAt - lastSummaryAt >= SUMMARY_INTERVAL_MS) ||
+    (!moving && summaryVersion !== session.version) ||
+    lastSummaryAt === Number.NEGATIVE_INFINITY
+  ) {
+    refreshSummary(nowAt);
   }
   maxFrameMs = Math.max(maxFrameMs, performance.now() - started);
   requestAnimationFrame(frame);

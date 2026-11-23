@@ -33,6 +33,7 @@ export class FixtureOrigin {
   readonly port: number;
   readonly staticRoot: string;
   fault: Fault = { kind: "ok" };
+  revisionOverride: string | null = null;
   probeCounts: MethodCounts = { GET: 0, OPTIONS: 0, other: 0 };
   private server: Server | null = null;
   private readonly sockets = new Set<Socket>();
@@ -113,6 +114,7 @@ export class FixtureOrigin {
       locationKind: this.provider === "cloudflare" ? "colo" : "execution-region",
     });
     const status = fault.kind === "status" ? fault.status : answer.status;
+    if (this.revisionOverride !== null) answer.headers.set("x-blip-revision", this.revisionOverride);
     response.writeHead(status, Object.fromEntries(answer.headers));
     response.end(await answer.text());
   }

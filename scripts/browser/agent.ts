@@ -42,7 +42,7 @@ export class BrowserSession {
   }
 
   async screenshot(path: string): Promise<void> {
-    await this.command("screenshot", path);
+    await this.command("screenshot", "--full", path);
   }
 
   async close(): Promise<void> {

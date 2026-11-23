@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { build } from "vite";
 import { ENDPOINTS_BY_TARGET } from "../../src/config/endpoints.ts";
 import { PROVIDERS, type Provider } from "../../src/config/targets.ts";
 import { PROBE_REQUEST } from "../../src/measure/probe-client.ts";
+import type { Report } from "../../src/measure/report.ts";
 import type { ProbeResult } from "../../src/measure/types.ts";
 import { FixtureOrigin, SIMULATED_LOCATION, type Fault } from "../../test/fixtures/fixture-origin.ts";
 import { BrowserSession } from "./agent.ts";
@@ -51,6 +52,17 @@ async function withStack(name: string, scenario: Scenario): Promise<void> {
     for (const origin of Object.values(origins)) await origin.start();
     await scenario({ browser, origins });
     console.log(`scenario ${name} passed (simulated fixture endpoints)`);
+  } catch (error) {
+    const state = await browser
+      .eval<unknown>(
+        `({ graph: document.querySelector("figure.graph")?.dataset.summary ?? null, report: document.querySelector("#summary")?.dataset.report ?? null, text: document.querySelector("main")?.innerText ?? null })`,
+      )
+      .catch((dumpError: unknown) => ({ dumpError: String(dumpError) }));
+    mkdirSync(resolve(".work/tmp"), { recursive: true });
+    const dump = resolve(`.work/tmp/check-${name}-failure.json`);
+    writeFileSync(dump, JSON.stringify(state, null, 1));
+    console.error(`scenario ${name} failed; page state saved to ${dump}`);
+    throw error;
   } finally {
     await browser.close();
     for (const origin of Object.values(origins)) await origin.stop();
@@ -239,9 +251,69 @@ async function liveScenario({ browser, origins }: Stack): Promise<void> {
   console.log(`max frame task ${stopped.maxFrameMs.toFixed(1)} ms`);
 }
 
+export const displayedReport = (browser: BrowserSession) =>
+  browser.eval<Report>(`JSON.parse(document.querySelector("#summary").dataset.report)`);
+
+const summaryText = (browser: BrowserSession, selector: string) =>
+  browser.eval<string | null>(`document.querySelector(${q(selector)})?.textContent ?? null`);
+
+async function compareScenario({ browser, origins }: Stack): Promise<void> {
+  origins.vercel.fault = { kind: "delay", ms: 40 };
+  await startCompare(browser, origins.vercel);
+  await waitFor("warm-up notice", () => summaryText(browser, "[data-warmup=active]"), (text) => text !== null);
+
+  const report = await waitFor(
+    "paired comparison after warm-up",
+    () => displayedReport(browser),
+    (r) => (r.rows[0]?.pairs?.differenceCount ?? 0) >= 10,
+    20_000,
+  );
+  const row = report.rows[0];
+  assert.ok(row?.pairs);
+  const difference = row.pairs.medianDifferenceMs ?? Number.NaN;
+  assert.ok(difference >= 35 && difference <= 120, `median paired difference ${difference}`);
+  assert.equal(row.pairs.warmupExcluded > 0, true, "warm-up pairs were not excluded");
+  const text = await summaryText(browser, "[data-metric=median-difference]");
+  assert.match(text ?? "", /^Median paired difference: \+\d+ ms \(Vercel − Cloudflare\): Vercel took longer/);
+  const vercelMedian = await summaryText(browser, "tr[data-metric=median] td[data-provider=vercel]");
+  assert.match(vercelMedian ?? "", /^\d+ ms$/);
+  const achieved = await summaryText(browser, "tr[data-metric=achieved] td[data-provider=cloudflare]");
+  const achievedHz = Number.parseFloat(achieved ?? "");
+  assert.ok(achievedHz >= 4 && achievedHz <= 5.5, `displayed Cloudflare achieved rate ${achieved}`);
+  console.log(`displayed: ${text}; Vercel median ${vercelMedian}; Cloudflare achieved ${achieved}`);
+
+  origins.cloudflare.fault = { kind: "status", status: 500 };
+  await waitFor(
+    "Cloudflare failures counted as vercel_only pairs",
+    () => summaryText(browser, "tr[data-category=vercel_only] td"),
+    (count) => Number(count) >= 3,
+  );
+  origins.cloudflare.fault = { kind: "ok" };
+  const errors = await summaryText(browser, "tr[data-metric=errors] td[data-provider=cloudflare]");
+  assert.match(errors ?? "", /^[1-9]\d* of \d+ \(network 0, HTTP [1-9]/);
+
+  origins.vercel.revisionOverride = "0000000000000000000000000000000000000000";
+  const warning = await waitFor(
+    "revision mismatch warning",
+    () => summaryText(browser, "[data-revision-mismatch]"),
+    (value) => value !== null,
+  );
+  origins.vercel.revisionOverride = null;
+  assert.match(warning ?? "", /Revision mismatch/);
+  const split = await displayedReport(browser);
+  assert.ok(split.spansSegments, "a backend revision change did not split the window into segments");
+  assert.ok(await summaryText(browser, "[data-spans-segments]"));
+  console.log("revision mismatch warned and split the window into per-segment rows");
+
+  await assertNoHorizontalOverflow(browser, "compare");
+  await browser.command("click", "#stop");
+  origins.vercel.fault = { kind: "ok" };
+}
+
 const SCENARIOS: Record<string, Scenario> = {
   stack: stackScenario,
   live: liveScenario,
+  compare: compareScenario,
 };
 
 const requested = process.argv[2];
