@@ -18,7 +18,7 @@ export type ProbeClientDeps = {
   resourceTiming: ResourceTimingReader;
 };
 
-const PROBE_REQUEST: RequestInit = {
+export const PROBE_REQUEST: RequestInit = {
   method: "GET",
   cache: "no-store",
   credentials: "omit",
