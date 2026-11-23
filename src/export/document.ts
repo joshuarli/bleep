@@ -116,7 +116,7 @@ export function buildExport(snapshot: ExportSnapshot): ExportDocument {
   });
 }
 
-export const exportJson = (document: ExportDocument): string => `${JSON.stringify(document, null, 1)}\n`;
+export const exportJson = (document: ExportDocument): string => `${JSON.stringify(document)}\n`;
 
 export function parseExportJson(text: string): ExportDocument {
   const parsed = JSON.parse(text) as Partial<ExportDocument>;
