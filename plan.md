@@ -3,12 +3,14 @@
 ## Status
 
 - **Goal:** a browser network-responsiveness monitor, deployed to Cloudflare and Vercel from one revision, that shows both destinations on one timeline during controlled experiments and exports reproducible evidence.
-- **Last accepted revision:** `0c20283` (F0).
-- **Accepted:** F0.
+- **Last accepted revision:** `6588059` (M3, milestone M-A passed).
+- **Accepted:** F0, L0, M1, M2, M3.
 - **Red:** none.
 - **Parked:** none.
-- **Next slice:** L0, then M1.
+- **Next slice:** H1, then X1, then U1.
 - **First command:** `npm ci && npm run accept:foundation`
+- **Live:** `https://blip-monitor.joshua-r-li-98.workers.dev` and `https://blip-monitor.vercel.app`, both at `7b5c342`, Vercel observed in `sfo1`. `node scripts/deploy.ts all` deploys the clean HEAD; `node scripts/verify-live.ts --contract|--all` checks it.
+- **Decisions later slices depend on:** builds read `BLIP_TARGET` (`production`, `local`, `fixture`, default `local`) through `scripts/stamp.ts`; the deploy script forces `production`. Fixture endpoints are `127.0.0.1:8791` (Cloudflare) and `127.0.0.1:8792` (Vercel); local endpoints are `8787` and `8788`. "Attempted" counts sent requests other than `cancelled`; cancellations and unsent slots are reported separately, and coverage is `ok / (attempted + unsent)`. Lanes were not used: each slice was cheaper serially.
 
 The campaign answers two questions:
 
