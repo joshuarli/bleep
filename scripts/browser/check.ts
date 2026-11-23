@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { build } from "vite";
@@ -8,7 +8,6 @@ import { ENDPOINTS_BY_TARGET } from "../../src/config/endpoints.ts";
 import { PROVIDERS, type Provider } from "../../src/config/targets.ts";
 import { PROBE_REQUEST } from "../../src/measure/probe-client.ts";
 import { parseExportJson } from "../../src/export/document.ts";
-import type { Report } from "../../src/measure/report.ts";
 import type { ProbeResult } from "../../src/measure/types.ts";
 import { FixtureOrigin, SIMULATED_LOCATION, type Fault } from "../../test/fixtures/fixture-origin.ts";
 import { BrowserSession } from "./agent.ts";
