@@ -1,7 +1,7 @@
 node_modules/
 dist/
 .cloudflare/
-.vercel/
+.vercel
 .wrangler/
 .work/
 .dev.vars*

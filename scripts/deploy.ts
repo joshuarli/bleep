@@ -23,9 +23,11 @@ const run = (command: string, args: string[]) =>
   execFileSync(command, args, { stdio: "inherit", env });
 
 const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8" }).trim();
-if (git("status", "--porcelain") !== "") {
-  throw new Error("refusing to deploy a dirty tree; commit or stash first");
-}
+const assertClean = (when: string) => {
+  const changes = git("status", "--porcelain");
+  if (changes !== "") throw new Error(`refusing to deploy a dirty tree ${when}:\n${changes}`);
+};
+assertClean("before stamping");
 const revision = git("rev-parse", "HEAD");
 
 run("npm", ["run", "stamp"]);
@@ -40,8 +42,10 @@ for (const provider of providers) {
   } else {
     if (!existsSync(".vercel/project.json")) {
       run("vercel", ["link", "--yes", "--project", VERCEL_PROJECT]);
+      assertClean("after vercel link");
     }
     run("vercel", ["build", "--prod", "--yes"]);
+    assertClean("after vercel build");
     run("vercel", ["deploy", "--prebuilt", "--prod", "--yes"]);
   }
 }

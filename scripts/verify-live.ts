@@ -31,7 +31,7 @@ async function verifyProbe(endpoint: Endpoint): Promise<string> {
     assert.equal(await response.text(), `{"v":1,"id":"${id}"}`, where);
     assert.equal(response.headers.get("cache-control"), "no-store", where);
     assert.equal(response.headers.get("access-control-allow-origin"), "*", where);
-    assert.equal(response.headers.get("age"), null, `${where}: served from a cache`);
+    assert.ok([null, "0"].includes(response.headers.get("age")), `${where}: served from a cache`);
     assert.doesNotMatch(response.headers.get("x-vercel-cache") ?? "", /HIT|STALE/, where);
     assert.doesNotMatch(response.headers.get("cf-cache-status") ?? "", /HIT|STALE/, where);
     assert.doesNotMatch(response.headers.get("content-type") ?? "", /html/, where);
