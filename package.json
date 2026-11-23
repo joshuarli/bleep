@@ -14,6 +14,7 @@
     "smoke:workerd": "npm run stamp && node scripts/smoke-workerd.ts",
     "build:cloudflare": "npm run stamp && cf build",
     "build:vercel-assets": "npm run stamp && vite build --config vite.vercel.config.ts",
+    "deploy": "node scripts/deploy.ts all",
     "accept:foundation": "npm run check && npm test && npm run build:vercel-assets && npm run build:cloudflare && cf deploy --dry-run && npm run smoke:workerd"
   },
   "devDependencies": {

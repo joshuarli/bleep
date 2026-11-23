@@ -1,3 +1,4 @@
+import type { Provider } from "../config/targets.ts";
 import { BUILD_REVISION } from "../generated/build-info.ts";
 
 export const PROBE_PATH = "/probe";
@@ -5,7 +6,7 @@ export const PROBE_FORMAT_VERSION = 1;
 export const PROBE_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 
 export type ProbeSite = {
-  provider: "cloudflare" | "vercel";
+  provider: Provider;
   runtime: "workers" | "node-fluid";
   location: string | null;
   locationKind: "colo" | "execution-region";
