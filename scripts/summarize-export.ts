@@ -109,10 +109,90 @@ function check(paths: string[]): void {
   }
 }
 
+type RunResult = {
+  file: string;
+  uiOrigin: string;
+  startedAtWallMs: number;
+  report: Report;
+};
+
+const ms1 = (value: number | null) => (value === null ? "–" : value.toFixed(1));
+
+function runResults(paths: string[]): RunResult[] {
+  return exportFiles(paths)
+    .filter((file) => file.endsWith(".json"))
+    .flatMap((file) => {
+      const loaded = load(file);
+      return loaded.runs.map((run) => ({
+        file: basename(file),
+        uiOrigin: loaded.uiOrigin,
+        startedAtWallMs: run.startedAtWallMs,
+        report: recompute(loaded, wholeRun(run), true),
+      }));
+    })
+    .sort((a, b) => a.startedAtWallMs - b.startedAtWallMs);
+}
+
+export function hostSensitivity(a: number, b: number): { flips: boolean; changed: boolean } {
+  const flips = Math.sign(a) !== Math.sign(b) && a !== 0 && b !== 0;
+  const changed = Math.abs(a - b) > Math.max(2, 0.2 * Math.max(Math.abs(a), Math.abs(b)));
+  return { flips, changed };
+}
+
+function results(paths: string[]): void {
+  const runs = runResults(paths);
+  if (runs.length === 0) throw new Error("no JSON exports found");
+  const lines: string[] = [];
+  lines.push("| Page | Run started (UTC) | Segment | Cloudflare ok of attempted | Cloudflare median / p95 / max ms | Vercel ok of attempted | Vercel median / p95 / max ms | Median paired difference ms | Pairs used | Skew flagged | Locations |");
+  lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+  const byHost = new Map<string, number[]>();
+  for (const run of runs) {
+    for (const row of run.report.rows) {
+      const cf = row.endpoints.cloudflare;
+      const v = row.endpoints.vercel;
+      const cell = (s: typeof cf) => (s === undefined ? "–" : `${s.ok} of ${s.attempted}`);
+      const lat = (s: typeof cf) => (s === undefined ? "–" : `${ms1(s.medianMs)} / ${ms1(s.p95Ms)} / ${ms1(s.maxMs)}`);
+      lines.push(
+        `| ${new URL(run.uiOrigin).host} | ${new Date(run.startedAtWallMs).toISOString().slice(0, 19)} | ${row.segmentIndex + 1} | ${cell(cf)} | ${lat(cf)} | ${cell(v)} | ${lat(v)} | ${ms1(row.pairs?.medianDifferenceMs ?? null)} | ${row.pairs?.differenceCount ?? 0} | ${row.pairs?.skewFlagged ?? 0} | ${PROVIDERS.map((p) => row.locations[p] ?? "unknown").join(", ")} |`,
+      );
+    }
+    const only = run.report.rows.length === 1 ? run.report.rows[0]?.pairs?.medianDifferenceMs : null;
+    if (only !== null && only !== undefined) {
+      const list = byHost.get(run.uiOrigin) ?? [];
+      list.push(only);
+      byHost.set(run.uiOrigin, list);
+    }
+  }
+  lines.push("");
+  lines.push("| Page | Single-segment runs | Run medians of paired difference ms | Median of run medians ms |");
+  lines.push("| --- | --- | --- | --- |");
+  const hostMedians: [string, number][] = [];
+  for (const [host, values] of byHost) {
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = sorted[Math.ceil(sorted.length / 2) - 1] ?? Number.NaN;
+    hostMedians.push([host, mid]);
+    lines.push(`| ${new URL(host).host} | ${values.length} | ${values.map(ms1).join(", ")} | ${ms1(mid)} |`);
+  }
+  lines.push("");
+  if (hostMedians.length === 2) {
+    const [[hostA, a], [hostB, b]] = hostMedians as [[string, number], [string, number]];
+    const { flips, changed } = hostSensitivity(a, b);
+    lines.push(
+      flips || changed
+        ? `UI-host sensitivity: yes. The median paired difference is ${ms1(a)} ms from ${new URL(hostA).host} and ${ms1(b)} ms from ${new URL(hostB).host}${flips ? ", and its sign flips" : ""}.`
+        : `UI-host sensitivity: no. The median paired difference is ${ms1(a)} ms from ${new URL(hostA).host} and ${ms1(b)} ms from ${new URL(hostB).host}, within max(2 ms, 20%).`,
+    );
+  } else {
+    lines.push("UI-host sensitivity: not assessed, because results from two pages are not both available.");
+  }
+  console.log(lines.join("\n"));
+}
+
 const args = process.argv.slice(2);
-if (args.length === 0 || (args[0] === "--check" && args.length === 1)) {
-  console.error("usage: node scripts/summarize-export.ts [--check] <export.json|export.csv|directory>...");
+if (args.length === 0 || (args[0]?.startsWith("--") && args.length === 1)) {
+  console.error("usage: node scripts/summarize-export.ts [--check|--results] <export.json|export.csv|directory>...");
   process.exit(2);
 }
 if (args[0] === "--check") check(args.slice(1));
+else if (args[0] === "--results") results(args.slice(1));
 else summarize(exportFiles(args));
