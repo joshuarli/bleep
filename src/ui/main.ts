@@ -6,10 +6,20 @@ import { newProbeId, sendProbe } from "../measure/probe-client.ts";
 import { buildSegments, type Segment } from "../measure/segments.ts";
 import { Session, SESSION_EXTENSION_MS, SESSION_LIMIT_MS } from "../measure/session.ts";
 import { runIndex } from "../measure/stats.ts";
-import { phaseBoundaries } from "../measure/intervals.ts";
+import {
+  cleanMarkerLabel,
+  compareIntervals,
+  intervalsFromMarkers,
+  lockBaseline,
+  phaseBoundaries,
+  type Experiment,
+  type Interval,
+  type Marker,
+} from "../measure/intervals.ts";
 import { buildReport, type Report } from "../measure/report.ts";
 import { buildControls, element } from "./controls.ts";
 import { drawGraph, pauseBands, PROVIDER_STYLE, TIME_SCALES, type DrawStats, type TimeScale } from "./graph.ts";
+import { buildMarkerPanel } from "./markers.ts";
 import { activeMs, latestResponseMeta, renderSummary } from "./summary.ts";
 
 const ACHIEVED_WINDOW_MS = 10_000;
@@ -40,7 +50,13 @@ const controlsRoot = element("section", { className: "panel", ariaLabel: "Contro
 const controls = buildControls(controlsRoot, {
   start: (mode) => session.start(mode),
   stop: () => session.stop(),
-  clear: () => session.clear(),
+  clear: () => {
+    session.clear();
+    markers = [];
+    selected = [];
+    experiment = { id: crypto.randomUUID(), baseline: null };
+    markersChanged();
+  },
   extend: () => session.extend(),
   rate: (rate) => session.selectRate(rate),
   burst: () => session.startBurst(),
@@ -105,7 +121,57 @@ const summarySection = element("section", { className: "panel", ariaLabel: "Summ
   summaryRoot,
 ]);
 
-app.append(controlsRoot, figure, summarySection, endpointList);
+let markers: Marker[] = [];
+let selected: string[] = [];
+let experiment: Experiment = { id: crypto.randomUUID(), baseline: null };
+let uiChanges = 0;
+const changeKey = () => `${session.version}:${uiChanges}`;
+
+const markerSection = element("section", { className: "panel", ariaLabel: "Markers and intervals" });
+const markerPanel = buildMarkerPanel(markerSection, {
+  mark: (label) => {
+    markers = [...markers, { id: crypto.randomUUID(), at: performance.now(), label: cleanMarkerLabel(label) }];
+    markersChanged();
+  },
+  relabel: (id, label) => {
+    markers = markers.map((marker) => (marker.id === id ? { ...marker, label: cleanMarkerLabel(label) } : marker));
+    markersChanged();
+  },
+  toggle: (id) => {
+    selected = selected.includes(id) ? selected.filter((other) => other !== id) : [...selected, id].slice(-2);
+    markersChanged();
+  },
+  setBaseline: (id) => {
+    const interval = currentIntervals(performance.now()).find((candidate) => candidate.markerId === id);
+    if (interval === undefined) return;
+    experiment = lockBaseline(experiment, interval);
+    markersChanged();
+  },
+  clearBaseline: () => {
+    experiment = { id: crypto.randomUUID(), baseline: null };
+    markersChanged();
+  },
+});
+
+function currentIntervals(nowAt: number): Interval[] {
+  return intervalsFromMarkers(markers, viewEnd(nowAt));
+}
+
+function selectedIntervals(nowAt: number): Interval[] {
+  const intervals = currentIntervals(nowAt);
+  return selected
+    .map((id) => intervals.find((interval) => interval.markerId === id))
+    .filter((interval): interval is Interval => interval !== undefined);
+}
+
+function markersChanged(): void {
+  uiChanges++;
+  const nowAt = performance.now();
+  markerPanel.updateList({ markers, intervals: currentIntervals(nowAt), experiment, selected: new Set(selected), nowAt });
+  lastSummaryAt = Number.NEGATIVE_INFINITY;
+}
+
+app.append(controlsRoot, figure, markerSection, summarySection, endpointList);
 
 const longTaskObserver =
   typeof PerformanceObserver !== "undefined" && PerformanceObserver.supportedEntryTypes?.includes("longtask")
@@ -118,12 +184,12 @@ longTaskObserver?.observe({ type: "longtask", buffered: false });
 session.setHidden(document.hidden);
 document.addEventListener("visibilitychange", () => session.setHidden(document.hidden));
 
-let segmentsVersion = -1;
+let segmentsVersion = "";
 let segments: Segment[] = [];
 function currentSegments(): Segment[] {
-  if (segmentsVersion !== session.version) {
-    segments = buildSegments(session.records, runIndex(session.runs), phaseBoundaries([])).segments;
-    segmentsVersion = session.version;
+  if (segmentsVersion !== changeKey()) {
+    segments = buildSegments(session.records, runIndex(session.runs), phaseBoundaries(markers)).segments;
+    segmentsVersion = changeKey();
   }
   return segments;
 }
@@ -141,6 +207,8 @@ function achievedHz(nowAt: number): number | null {
   return (sent + session.inflightCount) / (span / 1_000);
 }
 
+const moving = () => session.state.state !== "idle";
+
 function viewEnd(nowAt: number): number {
   const state = session.state;
   if (state.state !== "idle") return nowAt;
@@ -149,7 +217,7 @@ function viewEnd(nowAt: number): number {
 }
 
 let lastSummaryAt = Number.NEGATIVE_INFINITY;
-let summaryVersion = -1;
+let summaryVersion = "";
 let displayedReport: Report | null = null;
 
 function refreshSummary(nowAt: number): void {
@@ -158,7 +226,7 @@ function refreshSummary(nowAt: number): void {
   const report = buildReport({
     records: session.records.toArray(),
     runs: session.runs,
-    markers: [],
+    markers,
     window,
     excludeWarmup: true,
   });
@@ -182,12 +250,18 @@ function refreshSummary(nowAt: number): void {
     warmup: warmupLeft > 0 ? { remainingMs: warmupLeft } : null,
   });
   displayedReport = report;
+  markerPanel.updateComparison(
+    compareIntervals(session.records.toArray(), session.runs, markers, selectedIntervals(nowAt), experiment.baseline),
+  );
+  if (moving()) {
+    markerPanel.updateList({ markers, intervals: currentIntervals(nowAt), experiment, selected: new Set(selected), nowAt });
+  }
   lastSummaryAt = nowAt;
-  summaryVersion = session.version;
+  summaryVersion = changeKey();
 }
 
 let lastDrawAt = Number.NEGATIVE_INFINITY;
-let lastVersion = -1;
+let lastVersion = "";
 let maxFrameMs = 0;
 let stats: DrawStats | null = null;
 let size = { width: 0, height: 0, ratio: 0 };
@@ -206,7 +280,7 @@ function frame(): void {
   const msPerPixel = scale.ms / Math.max(1, rect.width);
   const moving = session.state.state !== "idle";
   const due = moving && nowAt - lastDrawAt >= Math.max(33, msPerPixel);
-  if (resized || due || session.version !== lastVersion) {
+  if (resized || due || changeKey() !== lastVersion) {
     const ctx = canvas.getContext("2d");
     if (ctx !== null) {
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -215,25 +289,26 @@ function frame(): void {
         events: session.events,
         runs: session.runs,
         segments: currentSegments(),
-        markers: [],
+        markers,
         nowAt: viewEnd(nowAt),
         scaleMs: scale.ms,
-        selection: null,
+        selections: [...selectedIntervals(nowAt), ...(experiment.baseline === null ? [] : [experiment.baseline])],
       });
     }
     lastDrawAt = nowAt;
-    lastVersion = session.version;
+    lastVersion = changeKey();
     publish(nowAt);
   }
   if (
     (moving && nowAt - lastSummaryAt >= SUMMARY_INTERVAL_MS) ||
-    (!moving && summaryVersion !== session.version) ||
+    (!moving && summaryVersion !== changeKey()) ||
     lastSummaryAt === Number.NEGATIVE_INFINITY
   ) {
     refreshSummary(nowAt);
   }
   maxFrameMs = Math.max(maxFrameMs, performance.now() - started);
-  requestAnimationFrame(frame);
+  markersChanged();
+requestAnimationFrame(frame);
 }
 
 function publish(nowAt: number): void {
@@ -279,4 +354,5 @@ function publish(nowAt: number): void {
   });
 }
 
+markersChanged();
 requestAnimationFrame(frame);

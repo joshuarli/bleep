@@ -28,7 +28,7 @@ export type GraphView = {
   markers: readonly Marker[];
   nowAt: Milliseconds;
   scaleMs: Milliseconds;
-  selection: { fromAt: Milliseconds; toAt: Milliseconds } | null;
+  selections: readonly { fromAt: Milliseconds; toAt: Milliseconds }[];
 };
 
 export type DrawStats = {
@@ -118,9 +118,9 @@ export function drawGraph(ctx: CanvasRenderingContext2D, width: number, height: 
     ctx.fillText(ago === 0 ? "now" : ago % 60 === 0 && ago >= 60 ? `-${ago / 60}m` : `-${ago}s`, gx, height - 8);
   }
 
-  if (view.selection !== null) {
-    const sx = x(Math.max(fromAt, view.selection.fromAt));
-    const ex = x(Math.min(toAt, view.selection.toAt));
+  for (const selection of view.selections) {
+    const sx = x(Math.max(fromAt, selection.fromAt));
+    const ex = x(Math.min(toAt, selection.toAt));
     if (ex > sx) {
       ctx.fillStyle = "rgba(250, 204, 21, 0.18)";
       ctx.fillRect(sx, plot.top, ex - sx, plot.height);

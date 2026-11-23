@@ -55,7 +55,7 @@ async function withStack(name: string, scenario: Scenario): Promise<void> {
   } catch (error) {
     const state = await browser
       .eval<unknown>(
-        `({ graph: document.querySelector("figure.graph")?.dataset.summary ?? null, report: document.querySelector("#summary")?.dataset.report ?? null, text: document.querySelector("main")?.innerText ?? null })`,
+        `({ graph: document.querySelector("figure.graph")?.dataset.summary ?? null, report: document.querySelector("#summary")?.dataset.report ?? null, comparison: document.querySelector("#interval-compare")?.dataset.comparison ?? null, text: document.querySelector("main")?.innerText ?? null })`,
       )
       .catch((dumpError: unknown) => ({ dumpError: String(dumpError) }));
     mkdirSync(resolve(".work/tmp"), { recursive: true });
@@ -310,10 +310,109 @@ async function compareScenario({ browser, origins }: Stack): Promise<void> {
   origins.vercel.fault = { kind: "ok" };
 }
 
+type ComparisonState = {
+  rows: {
+    role: "baseline" | "selected";
+    interval: { markerId: string; label: string };
+    spansSegments: boolean;
+    sides: { provider: Provider; medianDeltaMs: number | null; summary: { ok: number; attempted: number; medianMs: number | null } }[];
+  }[];
+  baselineUsable: boolean;
+};
+
+const comparisonState = (browser: BrowserSession) =>
+  browser.eval<ComparisonState>(`JSON.parse(document.querySelector("#interval-compare").dataset.comparison ?? '{"rows":[]}')`);
+
+const domClick = (browser: BrowserSession, selector: string) =>
+  browser.eval(`document.querySelector(${q(selector)}).click()`);
+
+async function markNow(browser: BrowserSession, label: string): Promise<string> {
+  const before = await browser.eval<string[]>(`[...document.querySelectorAll("#marker-list li")].map((li) => li.dataset.markerId)`);
+  await browser.command("fill", "#marker-label", label);
+  await browser.command("click", "#mark");
+  const after = await waitFor(
+    `marker ${label}`,
+    () => browser.eval<string[]>(`[...document.querySelectorAll("#marker-list li")].map((li) => li.dataset.markerId)`),
+    (ids) => ids.length === before.length + 1,
+  );
+  const added = after.find((id) => !before.includes(id));
+  assert.ok(added);
+  return added;
+}
+
+async function intervalsScenario({ browser, origins }: Stack): Promise<void> {
+  await startCompare(browser, origins.cloudflare);
+  await waitFor("warm-up notice", () => summaryText(browser, "[data-warmup=active]"), (text) => text !== null);
+  await waitFor("warm-up to finish", () => summaryText(browser, "[data-warmup=active]"), (text) => text === null, 15_000);
+
+  const baseline = await markNow(browser, "Baseline");
+  await delay(2_000);
+  origins.vercel.fault = { kind: "delay", ms: 60 };
+  const upload = await markNow(browser, "Upload started");
+  await delay(2_500);
+  origins.vercel.fault = { kind: "ok" };
+  const recovery = await markNow(browser, "Recovery");
+  await delay(1_000);
+
+  const hostile = '<img src=x onerror="window.__xss=1">';
+  await browser.command("fill", `li[data-marker-id="${recovery}"] .label-edit`, hostile);
+  await browser.command("press", "Enter");
+  await browser.eval(`document.activeElement.blur()`);
+  await waitFor(
+    "relabelled phase in the summary",
+    () => displayedReport(browser),
+    (report) => report.rows.some((row) => row.phase === hostile),
+  );
+  const injected = await browser.eval<{ images: number; xss: unknown; text: boolean }>(
+    `({ images: document.querySelectorAll("main img").length, xss: window.__xss ?? null, text: [...document.querySelectorAll(".label-edit")].some((input) => input.value.includes("<img")) })`,
+  );
+  assert.deepEqual(injected, { images: 0, xss: null, text: true }, "a marker label was interpreted as HTML");
+
+  await domClick(browser, `input[data-select-interval="${baseline}"]`);
+  await domClick(browser, `input[data-select-interval="${upload}"]`);
+  const selected = await waitFor(
+    "two selected intervals with both destinations",
+    () => comparisonState(browser),
+    (c) => c.rows.length === 2 && c.rows.every((row) => row.sides.length === 2),
+  );
+  const uploadRow = selected.rows.find((row) => row.interval.markerId === upload);
+  const baseRow = selected.rows.find((row) => row.interval.markerId === baseline);
+  const vercelMedian = (row: typeof uploadRow) => row?.sides.find((side) => side.provider === "vercel")?.summary.medianMs ?? 0;
+  assert.ok(vercelMedian(uploadRow) - vercelMedian(baseRow) >= 50, `interval medians ${vercelMedian(baseRow)} -> ${vercelMedian(uploadRow)}`);
+
+  const experimentBefore = await browser.eval<string>(`document.querySelector("#experiment").dataset.experimentId`);
+  await domClick(browser, `button[data-baseline="${baseline}"]`);
+  const withBaseline = await waitFor(
+    "baseline deltas",
+    () => comparisonState(browser),
+    (c) => c.rows.some((row) => row.role === "baseline") && c.baselineUsable,
+  );
+  const delta = withBaseline.rows
+    .find((row) => row.role === "selected" && row.interval.markerId === upload)
+    ?.sides.find((side) => side.provider === "vercel")?.medianDeltaMs;
+  assert.ok(delta !== null && delta !== undefined && delta >= 50, `Vercel median delta ${delta}`);
+  const deltaText = await summaryText(browser, `tr[data-interval="${upload}"][data-provider=vercel][data-role=selected] td[data-metric=median-delta]`);
+  assert.match(deltaText ?? "", /^\+\d+ ms$/);
+  console.log(`Upload interval Vercel median vs baseline: ${deltaText}`);
+  assert.equal(await browser.eval<boolean>(`document.querySelector('button[data-baseline="${upload}"]').disabled`), true, "baseline was not locked");
+
+  await domClick(browser, "#clear-baseline");
+  const experimentAfter = await waitFor(
+    "new experiment",
+    () => browser.eval<string>(`document.querySelector("#experiment").dataset.experimentId`),
+    (id) => id !== experimentBefore,
+  );
+  assert.notEqual(experimentAfter, experimentBefore);
+
+  await assertNoHorizontalOverflow(browser, "intervals");
+  await browser.command("click", "#stop");
+}
+
 const SCENARIOS: Record<string, Scenario> = {
   stack: stackScenario,
   live: liveScenario,
   compare: compareScenario,
+  intervals: intervalsScenario,
 };
 
 const requested = process.argv[2];
