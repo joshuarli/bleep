@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { build } from "vite";
 import { ENDPOINTS_BY_TARGET } from "../../src/config/endpoints.ts";
 import { PROVIDERS, type Provider } from "../../src/config/targets.ts";
@@ -120,8 +122,126 @@ async function stackScenario({ browser, origins }: Stack): Promise<void> {
   console.log("custom-header control triggered a preflight, so the zero-preflight check can fail");
 }
 
+export type GraphSummary = {
+  state: "idle" | "running" | "paused";
+  pauseReason: "hidden" | "user" | null;
+  mode: string | null;
+  targetHz: number | null;
+  achievedHz: number | null;
+  inflight: number;
+  records: number;
+  maxFrameMs: number;
+  okPoints: Record<Provider, number>;
+  failures: Record<Provider, number>;
+  unsentSlots: Record<Provider, number>;
+  gaps: Record<Provider, number>;
+  pauseBands: number;
+  markers: number;
+};
+
+const SCREENSHOTS = resolve(".work/tmp/screens");
+
+export const graphSummary = (browser: BrowserSession) =>
+  browser.eval<GraphSummary>(`JSON.parse(document.querySelector("figure.graph").dataset.summary)`);
+
+const canvasFingerprint = (browser: BrowserSession) =>
+  browser.eval<number>(`(() => {
+    const canvas = document.querySelector("#graph");
+    const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+    let hash = 0;
+    for (let i = 0; i < data.length; i += 4) hash = (hash * 31 + data[i] + data[i + 1] * 7 + data[i + 2] * 13) % 2147483647;
+    return hash;
+  })()`);
+
+export async function waitFor<T>(
+  what: string,
+  read: () => Promise<T>,
+  done: (value: T) => boolean,
+  timeoutMs = 8_000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let value = await read();
+  while (!done(value)) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}: ${q(value)}`);
+    await delay(200);
+    value = await read();
+  }
+  return value;
+}
+
+export async function startCompare(browser: BrowserSession, ui: FixtureOrigin): Promise<void> {
+  await browser.viewport(1280, 860);
+  await browser.open(`${ui.origin}/`);
+  await browser.command("click", "input[name=mode][value=compare]");
+  await browser.command("click", "#start");
+}
+
+export async function assertNoHorizontalOverflow(browser: BrowserSession, label: string): Promise<void> {
+  await browser.viewport(390, 844);
+  await delay(300);
+  const overflow = await browser.eval<{ scroll: number; client: number; graph: number }>(
+    `({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth, graph: document.querySelector("#graph").getBoundingClientRect().width })`,
+  );
+  assert.ok(overflow.scroll <= overflow.client, `${label}: horizontal overflow ${q(overflow)}`);
+  assert.ok(overflow.graph <= 390 && overflow.graph > 300, `${label}: graph width ${overflow.graph}`);
+  mkdirSync(SCREENSHOTS, { recursive: true });
+  await browser.screenshot(resolve(SCREENSHOTS, `${label}-390.png`));
+  await browser.viewport(1280, 860);
+}
+
+async function liveScenario({ browser, origins }: Stack): Promise<void> {
+  await startCompare(browser, origins.cloudflare);
+  const running = await waitFor(
+    "samples from both destinations",
+    () => graphSummary(browser),
+    (s) => s.okPoints.cloudflare >= 5 && s.okPoints.vercel >= 5,
+  );
+  assert.equal(running.state, "running");
+  assert.equal(running.mode, "compare");
+  assert.equal(running.targetHz, 5);
+
+  const before = await canvasFingerprint(browser);
+  await delay(700);
+  assert.notEqual(await canvasFingerprint(browser), before, "canvas did not change while measuring");
+
+  await browser.command("click", "#graph");
+  const paused = await waitFor("user pause", () => graphSummary(browser), (s) => s.state === "paused");
+  assert.equal(paused.pauseReason, "user");
+  assert.equal(paused.inflight, 0);
+  await delay(1_500);
+  const pausedLater = await graphSummary(browser);
+  assert.equal(pausedLater.okPoints.cloudflare, paused.okPoints.cloudflare, "samples arrived while paused");
+  await browser.command("click", "#graph");
+  const resumed = await waitFor("resume", () => graphSummary(browser), (s) => s.state === "running" && s.pauseBands >= 1);
+  console.log(`pause band visible after resume (${resumed.pauseBands})`);
+
+  origins.vercel.fault = { kind: "hang" };
+  const hung = await waitFor(
+    "Vercel timeouts and capped slots",
+    () => graphSummary(browser),
+    (s) => s.failures.vercel >= 2 && s.unsentSlots.vercel >= 1,
+    10_000,
+  );
+  origins.vercel.fault = { kind: "ok" };
+  assert.ok(hung.gaps.vercel >= 1, `no visible Vercel gap: ${q(hung)}`);
+  assert.ok(hung.okPoints.cloudflare > resumed.okPoints.cloudflare, "Cloudflare stopped sampling during the Vercel hang");
+  assert.equal(hung.failures.cloudflare, 0);
+  console.log(`hang: Vercel ${hung.failures.vercel} failed, ${hung.unsentSlots.vercel} not sent; Cloudflare kept sampling`);
+
+  mkdirSync(SCREENSHOTS, { recursive: true });
+  await browser.screenshot(resolve(SCREENSHOTS, "live-desktop.png"));
+  await assertNoHorizontalOverflow(browser, "live");
+
+  await browser.command("click", "#stop");
+  const stopped = await waitFor("stop", () => graphSummary(browser), (s) => s.state === "idle");
+  assert.equal(stopped.inflight, 0);
+  assert.ok(stopped.maxFrameMs < 250, `frame task ${stopped.maxFrameMs} ms`);
+  console.log(`max frame task ${stopped.maxFrameMs.toFixed(1)} ms`);
+}
+
 const SCENARIOS: Record<string, Scenario> = {
   stack: stackScenario,
+  live: liveScenario,
 };
 
 const requested = process.argv[2];

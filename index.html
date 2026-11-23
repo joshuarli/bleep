@@ -4,9 +4,55 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>blip monitor</title>
+    <style>
+      :root { color-scheme: light; font: 14px/1.4 system-ui, sans-serif; color: #111827; background: #f9fafb; }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      main { max-width: 1100px; margin: 0 auto; padding: 12px; }
+      h1 { font-size: 1.25rem; margin: 0 0 4px; }
+      h2 { font-size: 1rem; margin: 16px 0 6px; }
+      p { margin: 4px 0; }
+      .intro { color: #374151; max-width: 75ch; }
+      .controls { display: flex; flex-wrap: wrap; gap: 8px; }
+      .group { border: 1px solid #d1d5db; border-radius: 6px; padding: 4px 8px 8px; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; min-width: 0; }
+      .group legend { font-weight: 600; padding: 0 4px; }
+      .group label { white-space: nowrap; }
+      .buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+      button { font: inherit; padding: 4px 10px; border: 1px solid #6b7280; border-radius: 4px; background: #fff; cursor: pointer; }
+      button:disabled { opacity: 0.45; cursor: default; }
+      button:focus-visible, input:focus-visible, canvas:focus-visible, select:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+      .status { font-weight: 600; min-height: 1.4em; }
+      figure.graph { margin: 8px 0; }
+      #graph { display: block; width: 100%; height: 340px; background: #fff; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; }
+      figcaption { font-size: 0.85rem; color: #374151; margin-top: 4px; }
+      .legend { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 0.85rem; }
+      .swatch { display: inline-block; width: 9px; height: 9px; }
+      .swatch.circle { border-radius: 50%; background: #c2410c; }
+      .swatch.square { background: #1d4ed8; }
+      .cross { font-weight: 700; }
+      .endpoints { font-size: 0.8rem; color: #4b5563; overflow-wrap: anywhere; }
+      code { font-size: 0.9em; }
+      .panel { margin-top: 8px; }
+      .table-wrap { overflow-x: auto; max-width: 100%; }
+      table { border-collapse: collapse; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+      th, td { border: 1px solid #e5e7eb; padding: 2px 6px; text-align: right; }
+      th:first-child, td:first-child { text-align: left; }
+      .warning { background: #fef3c7; border: 1px solid #f59e0b; padding: 4px 8px; border-radius: 4px; }
+      .note { font-size: 0.85rem; color: #4b5563; }
+      @media (max-width: 600px) { #graph { height: 260px; } main { padding: 8px; } }
+    </style>
   </head>
   <body>
-    <main id="app"></main>
+    <main>
+      <h1>blip monitor</h1>
+      <p class="intro">
+        Each point is one HTTP request from this browser to a destination: the time from just before the request
+        is sent until its full response body has arrived. It includes routing, geography, connection handling, and
+        browser scheduling, not just server time. A failed request is drawn as × along the top; gaps mean nothing
+        was measured. Click the graph to pause or resume.
+      </p>
+      <div id="app"></div>
+    </main>
     <script type="module" src="/src/ui/main.ts"></script>
   </body>
 </html>
