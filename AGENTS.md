@@ -2,6 +2,8 @@
 
 One Vite + TypeScript frontend probes Cloudflare Workers and Vercel Fluid from the browser and plots both destinations on one timeline. `docs/` holds the detail.
 
+The roadmap, [docs/roadmap.md](docs/roadmap.md), holds all current and future work; its Status is the resume point.
+
 ## Commands
 
 - `pnpm install --frozen-lockfile` — install from the stuff npm registry with the pinned Node 26.13.1 and pnpm 12.21.0. Deployed functions pin Node 24.
